@@ -1,0 +1,19 @@
+{
+  "law_firms": [],
+  "invoices": [],
+  "scheduled_invoices": [],
+  "email_config": {
+    "id": 1,
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_user": "",
+    "smtp_pass": "",
+    "from_email": "",
+    "from_name": "JUDY Legal Research"
+  },
+  "counters": {
+    "firm_id": 0,
+    "invoice_id": 0,
+    "scheduled_id": 0
+  }
+}
