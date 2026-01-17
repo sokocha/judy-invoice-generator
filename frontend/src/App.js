@@ -456,33 +456,33 @@ const styles = `
   }
 `;
 
-// API Functions
+// API Functions - Using query parameters for Vercel Hobby plan compatibility
 const api = {
   // Firms
   getFirms: () => fetch(`${API_BASE}/api/firms`).then(r => r.json()),
-  getFirm: (id) => fetch(`${API_BASE}/api/firms/${id}`).then(r => r.json()),
+  getFirm: (id) => fetch(`${API_BASE}/api/firms?id=${id}`).then(r => r.json()),
   createFirm: (data) => fetch(`${API_BASE}/api/firms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  updateFirm: (id, data) => fetch(`${API_BASE}/api/firms/${id}`, {
+  updateFirm: (id, data) => fetch(`${API_BASE}/api/firms?id=${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  deleteFirm: (id) => fetch(`${API_BASE}/api/firms/${id}`, { method: 'DELETE' }).then(r => r.json()),
+  deleteFirm: (id) => fetch(`${API_BASE}/api/firms?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
 
   // Invoices
   getInvoices: () => fetch(`${API_BASE}/api/invoices`).then(r => r.json()),
-  getNextInvoiceNumber: () => fetch(`${API_BASE}/api/invoices/next-number`).then(r => r.json()),
-  previewInvoice: (data) => fetch(`${API_BASE}/api/invoices/preview`, {
+  getNextInvoiceNumber: () => fetch(`${API_BASE}/api/invoices?action=next-number`).then(r => r.json()),
+  previewInvoice: (data) => fetch(`${API_BASE}/api/invoices?action=preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
   generateInvoice: async (data) => {
-    const response = await fetch(`${API_BASE}/api/invoices/generate`, {
+    const response = await fetch(`${API_BASE}/api/invoices?action=generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -492,14 +492,14 @@ const api = {
     const invoiceNumber = response.headers.get('X-Invoice-Number');
     return { blob, invoiceNumber };
   },
-  generateAndSendInvoice: (data) => fetch(`${API_BASE}/api/invoices/generate-and-send`, {
+  generateAndSendInvoice: (data) => fetch(`${API_BASE}/api/invoices?action=generate-and-send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  sendInvoice: (id) => fetch(`${API_BASE}/api/invoices/${id}/send`, { method: 'POST' }).then(r => r.json()),
+  sendInvoice: (id) => fetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
   downloadInvoice: async (id) => {
-    const response = await fetch(`${API_BASE}/api/invoices/${id}/download`);
+    const response = await fetch(`${API_BASE}/api/invoices?action=download&id=${id}`);
     if (!response.ok) throw new Error('Failed to download invoice');
     return response.blob();
   },
@@ -511,8 +511,8 @@ const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  deleteScheduled: (id) => fetch(`${API_BASE}/api/scheduled/${id}`, { method: 'DELETE' }).then(r => r.json()),
-  processScheduled: () => fetch(`${API_BASE}/api/scheduled/process`, { method: 'POST' }).then(r => r.json()),
+  deleteScheduled: (id) => fetch(`${API_BASE}/api/scheduled?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
+  processScheduled: () => fetch(`${API_BASE}/api/scheduled?action=process`, { method: 'POST' }).then(r => r.json()),
 
   // Email Config
   getEmailConfig: () => fetch(`${API_BASE}/api/email-config`).then(r => r.json()),
@@ -521,12 +521,12 @@ const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  verifyEmailConfig: () => fetch(`${API_BASE}/api/email-config/verify`).then(r => r.json()),
+  verifyEmailConfig: () => fetch(`${API_BASE}/api/email-config?action=verify`).then(r => r.json()),
 
   // Scheduler
-  getSchedulerStatus: () => fetch(`${API_BASE}/api/scheduler/status`).then(r => r.json()),
-  startScheduler: () => fetch(`${API_BASE}/api/scheduler/start`, { method: 'POST' }).then(r => r.json()),
-  stopScheduler: () => fetch(`${API_BASE}/api/scheduler/stop`, { method: 'POST' }).then(r => r.json()),
+  getSchedulerStatus: () => fetch(`${API_BASE}/api/scheduler`).then(r => r.json()),
+  startScheduler: () => fetch(`${API_BASE}/api/scheduler?action=start`, { method: 'POST' }).then(r => r.json()),
+  stopScheduler: () => fetch(`${API_BASE}/api/scheduler?action=stop`, { method: 'POST' }).then(r => r.json()),
 };
 
 // Format currency
