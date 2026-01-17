@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-// API base URL
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001';
+// API base URL - empty for same-origin requests on Vercel
+const API_BASE = '';
 
 // Styles
 const styles = `

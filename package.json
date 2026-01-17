@@ -1,0 +1,20 @@
+{
+  "name": "judy-invoice-generator",
+  "version": "1.0.0",
+  "description": "JUDY Invoice Generator - Full Stack Application",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "cd frontend && npm install && npm run build",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@vercel/blob": "^0.23.0",
+    "@vercel/postgres": "^0.8.0",
+    "docx-templates": "^4.11.3",
+    "nodemailer": "^6.9.8"
+  },
+  "devDependencies": {
+    "vercel": "^33.0.0"
+  }
+}
