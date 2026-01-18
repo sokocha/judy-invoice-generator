@@ -518,7 +518,20 @@ const styles = `
   tr:hover {
     background: #f8fafc;
   }
-  
+
+  /* Highlight animation for table rows */
+  .highlight-row {
+    animation: highlightPulse 2s ease-in-out;
+  }
+
+  @keyframes highlightPulse {
+    0% { background-color: #fef3c7; }
+    25% { background-color: #fde68a; }
+    50% { background-color: #fef3c7; }
+    75% { background-color: #fde68a; }
+    100% { background-color: transparent; }
+  }
+
   .badge {
     display: inline-block;
     padding: 0.25rem 0.625rem;
@@ -2393,7 +2406,7 @@ function Alert({ type, message, onClose }) {
 }
 
 // Law Firms Management
-function FirmsSection({ firms, onRefresh, isLoading }) {
+function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   const [showModal, setShowModal] = useState(false);
   const [editingFirm, setEditingFirm] = useState(null);
   const [formData, setFormData] = useState({
@@ -2418,6 +2431,21 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' });
   const { addToast } = useToast();
   const confirm = useConfirm();
+  const firmRowRefs = useRef({});
+
+  // Scroll to highlighted firms when they change
+  useEffect(() => {
+    if (highlightFirmIds.length > 0) {
+      // Scroll to the first highlighted firm
+      const firstFirmId = highlightFirmIds[0];
+      const rowElement = firmRowRefs.current[firstFirmId];
+      if (rowElement) {
+        setTimeout(() => {
+          rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    }
+  }, [highlightFirmIds]);
 
   // Form validation
   const validateForm = () => {
@@ -2650,7 +2678,11 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
               </thead>
               <tbody>
                 {filteredFirms.map(firm => (
-                  <tr key={firm.id}>
+                  <tr
+                    key={firm.id}
+                    ref={el => firmRowRefs.current[firm.id] = el}
+                    className={highlightFirmIds.includes(firm.id) ? 'highlight-row' : ''}
+                  >
                     <td>
                       {inlineEdit.id === firm.id && inlineEdit.field === 'firm_name' ? (
                         <div className="inline-edit-cell">
@@ -4901,7 +4933,7 @@ function LoginPage() {
 }
 
 // Dashboard Section
-function DashboardSection({ firms, invoices, scheduled, onNavigate }) {
+function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateToFirmsWithHighlight }) {
   // Exchange rate (approximate - in production this would be fetched from an API)
   const GHS_TO_USD = 0.063; // 1 GHS ≈ 0.063 USD
 
@@ -5119,7 +5151,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate }) {
                   {expiringFirms.length > 3 && ` and ${expiringFirms.length - 3} more`}
                 </p>
               </div>
-              <button className="btn btn-sm btn-secondary" onClick={() => onNavigate('firms')}>
+              <button className="btn btn-sm btn-secondary" onClick={() => onNavigateToFirmsWithHighlight(expiringFirms.map(f => f.id))}>
                 View
               </button>
             </div>
@@ -5384,8 +5416,17 @@ function AppContent() {
   const [scheduled, setScheduled] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [highlightFirmIds, setHighlightFirmIds] = useState([]);
   const { addToast } = useToast();
   const { user, logout } = useAuth();
+
+  // Navigate to firms tab and highlight specific firms
+  const navigateToFirmsWithHighlight = (firmIds) => {
+    setHighlightFirmIds(firmIds);
+    setActiveTab('firms');
+    // Clear highlight after 3 seconds
+    setTimeout(() => setHighlightFirmIds([]), 3000);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -5545,6 +5586,7 @@ function AppContent() {
                 invoices={invoices}
                 scheduled={scheduled}
                 onNavigate={setActiveTab}
+                onNavigateToFirmsWithHighlight={navigateToFirmsWithHighlight}
               />
             )}
             {activeTab === 'generate' && (
@@ -5554,7 +5596,7 @@ function AppContent() {
               </>
             )}
             {activeTab === 'firms' && (
-              <FirmsSection firms={firms} onRefresh={loadData} isLoading={loading} />
+              <FirmsSection firms={firms} onRefresh={loadData} isLoading={loading} highlightFirmIds={highlightFirmIds} />
             )}
             {activeTab === 'scheduled' && (
               <ScheduledSection firms={firms} scheduled={scheduled} onRefresh={loadData} />
