@@ -5582,17 +5582,25 @@ function AuthenticatedApp() {
 
   if (loading) {
     return (
-      <div className="login-container">
-        <div className="loading">
-          <div className="spinner"></div>
-          Loading...
+      <>
+        <style>{styles}</style>
+        <div className="login-container">
+          <div className="loading">
+            <div className="spinner"></div>
+            Loading...
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return (
+      <>
+        <style>{styles}</style>
+        <LoginPage />
+      </>
+    );
   }
 
   return <AppContent />;
