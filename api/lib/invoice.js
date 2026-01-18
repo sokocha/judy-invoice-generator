@@ -162,15 +162,15 @@ export const getInvoicePreview = async (invoiceData) => {
   };
 };
 
-// Generate PDF invoice using ConvertAPI (preserves template styling)
+// Generate PDF invoice using Cloudmersive (800 free calls/month, no expiration)
 export const generateInvoicePDF = async (invoiceData) => {
   // First generate the DOCX
   const docxResult = await generateInvoice(invoiceData);
 
-  // Convert DOCX to PDF using ConvertAPI
-  const convertApiSecret = process.env.CONVERTAPI_SECRET;
-  if (!convertApiSecret) {
-    throw new Error('CONVERTAPI_SECRET environment variable not set. Please add your ConvertAPI secret key.');
+  // Convert DOCX to PDF using Cloudmersive API
+  const cloudmersiveApiKey = process.env.CLOUDMERSIVE_API_KEY;
+  if (!cloudmersiveApiKey) {
+    throw new Error('CLOUDMERSIVE_API_KEY environment variable not set. Please add your Cloudmersive API key.');
   }
 
   try {
@@ -179,27 +179,23 @@ export const generateInvoicePDF = async (invoiceData) => {
     const docxBlob = new Blob([docxResult.buffer], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     });
-    formData.append('File', docxBlob, 'invoice.docx');
+    formData.append('inputFile', docxBlob, 'invoice.docx');
 
-    const response = await fetch(`https://v2.convertapi.com/convert/docx/to/pdf?Secret=${convertApiSecret}`, {
+    const response = await fetch('https://api.cloudmersive.com/convert/docx/to/pdf', {
       method: 'POST',
+      headers: {
+        'Apikey': cloudmersiveApiKey
+      },
       body: formData
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`ConvertAPI error: ${response.status} - ${errorText}`);
+      throw new Error(`Cloudmersive error: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
-
-    if (!result.Files || result.Files.length === 0) {
-      throw new Error('ConvertAPI returned no files');
-    }
-
-    // Get the PDF file data (base64 encoded)
-    const pdfBase64 = result.Files[0].FileData;
-    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+    // Cloudmersive returns the PDF directly as binary data
+    const pdfBuffer = Buffer.from(await response.arrayBuffer());
 
     return {
       buffer: pdfBuffer,
