@@ -57,6 +57,10 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
             <td style="padding: 10px; border: 1px solid #e2e8f0;">${invoice.duration}</td>
           </tr>
           <tr>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;"><strong>Users:</strong></td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;">${invoice.num_users || 1}</td>
+          </tr>
+          <tr>
             <td style="padding: 10px; border: 1px solid #e2e8f0;"><strong>Total Amount:</strong></td>
             <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #9C27B0;">GHS ${total}</td>
           </tr>
