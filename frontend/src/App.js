@@ -2643,6 +2643,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   const [bulkFormData, setBulkFormData] = useState({
     selectedFirms: []
   });
+  const [bulkSearchTerm, setBulkSearchTerm] = useState('');
   const [loading, setLoading] = useState({});
   const [formLoading, setFormLoading] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -2808,6 +2809,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     setBulkFormData({
       selectedFirms: firmsWithSubscriptionEnd.map(f => f.id)
     });
+    setBulkSearchTerm('');
     setShowBulkModal(true);
   };
 
@@ -2836,19 +2838,25 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
       return;
     }
 
-    // Check how many firms would have immediate dates
-    const immediateCount = bulkFormData.selectedFirms.filter(firmId => {
-      const firm = firmsWithSubscriptionEnd.find(f => f.id === firmId);
-      if (!firm) return false;
-      const scheduleDate = calculateScheduleDate(firm.subscription_end);
-      return isImmediateDate(scheduleDate);
-    }).length;
+    // Check which firms would have immediate dates
+    const immediateFirms = bulkFormData.selectedFirms
+      .map(firmId => firmsWithSubscriptionEnd.find(f => f.id === firmId))
+      .filter(firm => {
+        if (!firm) return false;
+        const scheduleDate = calculateScheduleDate(firm.subscription_end);
+        return isImmediateDate(scheduleDate);
+      });
 
     // Warn if any dates would trigger immediate sending
-    if (immediateCount > 0) {
+    if (immediateFirms.length > 0) {
+      const firmDetails = immediateFirms.map(firm => {
+        const scheduleDate = calculateScheduleDate(firm.subscription_end);
+        return `• ${firm.firm_name} (${firm.plan_type === 'plus' ? 'Plus' : 'Standard'}, ${firm.plan_duration || '12 months'}, ${formatCurrency(firm.base_price || 0)}) - Schedule: ${formatDate(scheduleDate)}`;
+      }).join('\n');
+
       const confirmed = await confirm({
         title: '⚠️ Immediate Invoice Warning',
-        message: `${immediateCount} firm(s) have schedule dates that are today or in the past. These invoices will be sent IMMEDIATELY when the scheduler runs. Are you sure you want to proceed?`,
+        message: `${immediateFirms.length} firm(s) have schedule dates that are today or in the past. These invoices will be sent IMMEDIATELY when the scheduler runs:\n\n${firmDetails}\n\nAre you sure you want to proceed?`,
         confirmText: 'Yes, Proceed',
         cancelText: 'Cancel',
         type: 'danger'
@@ -3154,7 +3162,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
       </Modal>
 
       {/* Bulk Schedule Modal */}
-      <Modal isOpen={showBulkModal} onClose={() => setShowBulkModal(false)} title="Bulk Schedule Invoices">
+      <Modal isOpen={showBulkModal} onClose={() => { setShowBulkModal(false); setBulkSearchTerm(''); }} title="Bulk Schedule Invoices">
         <div className="modal-body">
           <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.5rem' }}>
@@ -3165,10 +3173,22 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
             Invoices will be scheduled 3 weeks before each firm's subscription end date (on a weekday). Each firm's plan type and duration will be used.
           </div>
 
+          {/* Search input */}
+          <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Search firms..."
+              value={bulkSearchTerm}
+              onChange={(e) => setBulkSearchTerm(e.target.value)}
+              style={{ fontSize: '0.875rem' }}
+            />
+          </div>
+
           {/* Firm Selection */}
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <label style={{ margin: 0 }}>Select Firms ({bulkFormData.selectedFirms.length} of {firmsWithSubscriptionEnd.length})</label>
+              <label style={{ margin: 0 }}>Select Firms ({bulkFormData.selectedFirms.length} selected)</label>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -3181,8 +3201,12 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
             <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem' }}>
               {firmsWithSubscriptionEnd.length === 0 ? (
                 <p style={{ color: '#64748b', textAlign: 'center', margin: '1rem 0' }}>No firms with subscription end dates. Update firm details first.</p>
+              ) : firmsWithSubscriptionEnd.filter(firm => firm.firm_name.toLowerCase().includes(bulkSearchTerm.toLowerCase())).length === 0 ? (
+                <p style={{ color: '#64748b', textAlign: 'center', margin: '1rem 0' }}>No firms match "{bulkSearchTerm}"</p>
               ) : (
-                firmsWithSubscriptionEnd.map(firm => {
+                firmsWithSubscriptionEnd
+                  .filter(firm => firm.firm_name.toLowerCase().includes(bulkSearchTerm.toLowerCase()))
+                  .map(firm => {
                   const scheduleDate = calculateScheduleDate(firm.subscription_end);
                   const isImmediate = isImmediateDate(scheduleDate);
                   return (
