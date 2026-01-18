@@ -863,8 +863,8 @@ const styles = `
   .action-btn-send { background: #d1fae5; color: #059669; }
   .action-btn-send:hover:not(:disabled) { background: #a7f3d0; }
 
-  .action-btn-drive { background: #fef3c7; color: #d97706; }
-  .action-btn-drive:hover:not(:disabled) { background: #fde68a; }
+  .action-btn-drive { background: #f1f5f9; }
+  .action-btn-drive:hover:not(:disabled) { background: #e2e8f0; }
 
   .action-btn-edit { background: #e2e8f0; color: #475569; }
   .action-btn-edit:hover:not(:disabled) { background: #cbd5e1; }
@@ -2915,10 +2915,13 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                                 addToast('Download the PDF first, then upload to Google Drive', 'info');
                               }}
                             >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M12 2L4.5 12.5l3.5 6h8l3.5-6L12 2z"/>
-                                <path d="M4.5 12.5h15"/>
-                                <path d="M8 18.5l4-6"/>
+                              <svg width="16" height="14" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" fill="#0066da"/>
+                                <path d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 52.2c-.8 1.4-1.2 2.95-1.2 4.5h27.5l16.15-31.7z" fill="#00ac47"/>
+                                <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.85L73.55 76.8z" fill="#ea4335"/>
+                                <path d="M43.65 25L57.4 1.2c-1.35-.8-2.9-1.2-4.5-1.2H34.35c-1.6 0-3.15.45-4.45 1.2L43.65 25z" fill="#00832d"/>
+                                <path d="M59.85 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2L59.85 53z" fill="#2684fc"/>
+                                <path d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.2 28h27.45c0-1.55-.4-3.1-1.2-4.5l-12.7-22z" fill="#ffba00"/>
                               </svg>
                             </button>
                           </Tooltip>
