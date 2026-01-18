@@ -181,7 +181,8 @@ function AuthProvider({ children }) {
   // Check if user is logged in on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const storedToken = localStorage.getItem('judy_token');
+      // Check localStorage first (remember me), then sessionStorage
+      const storedToken = localStorage.getItem('judy_token') || sessionStorage.getItem('judy_token');
       if (storedToken) {
         try {
           const response = await fetch(`${API_BASE}/api/auth?action=me`, {
@@ -194,11 +195,13 @@ function AuthProvider({ children }) {
           } else {
             // Token invalid, clear it
             localStorage.removeItem('judy_token');
+            sessionStorage.removeItem('judy_token');
             setToken(null);
           }
         } catch (error) {
           console.error('Auth check failed:', error);
           localStorage.removeItem('judy_token');
+          sessionStorage.removeItem('judy_token');
           setToken(null);
         }
       }
@@ -207,7 +210,7 @@ function AuthProvider({ children }) {
     checkAuth();
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (email, password, rememberMe = false) => {
     const response = await fetch(`${API_BASE}/api/auth?action=login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -215,7 +218,14 @@ function AuthProvider({ children }) {
     });
     const data = await response.json();
     if (response.ok) {
-      localStorage.setItem('judy_token', data.token);
+      if (rememberMe) {
+        localStorage.setItem('judy_token', data.token);
+        localStorage.setItem('judy_remember', 'true');
+      } else {
+        sessionStorage.setItem('judy_token', data.token);
+        localStorage.removeItem('judy_token');
+        localStorage.removeItem('judy_remember');
+      }
       setToken(data.token);
       setUser(data.user);
       return { success: true };
@@ -225,6 +235,8 @@ function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('judy_token');
+    localStorage.removeItem('judy_remember');
+    sessionStorage.removeItem('judy_token');
     setToken(null);
     setUser(null);
   };
@@ -332,6 +344,43 @@ const styles = `
   .nav-btn.active {
     background: white;
     color: #1e40af;
+  }
+
+  .nav-btn {
+    position: relative;
+  }
+
+  .nav-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: badgePulse 2s ease-in-out infinite;
+  }
+
+  .nav-badge-danger {
+    background: #dc2626;
+    color: white;
+    box-shadow: 0 0 8px rgba(220, 38, 38, 0.5);
+  }
+
+  .nav-badge-warning {
+    background: #f59e0b;
+    color: white;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+  }
+
+  @keyframes badgePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
   }
 
   .nav-divider {
@@ -553,16 +602,29 @@ const styles = `
   .badge-yellow {
     background: #fef3c7;
     color: #b45309;
+    animation: statusPulse 2s ease-in-out infinite;
   }
-  
+
   .badge-gray {
     background: #f1f5f9;
     color: #64748b;
   }
-  
+
   .badge-red {
     background: #fee2e2;
     color: #dc2626;
+    animation: statusPulse 1.5s ease-in-out infinite;
+  }
+
+  .badge-active {
+    background: #d1fae5;
+    color: #047857;
+    border: 1px solid #10b981;
+  }
+
+  @keyframes statusPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.02); }
   }
   
   .modal-overlay {
@@ -942,11 +1004,11 @@ const styles = `
   /* Toast Notifications */
   .toast-container {
     position: fixed;
-    top: 1rem;
+    bottom: 1rem;
     right: 1rem;
     z-index: 2000;
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse;
     gap: 0.5rem;
     max-width: 400px;
   }
@@ -963,11 +1025,11 @@ const styles = `
 
   @keyframes slideIn {
     from {
-      transform: translateX(100%);
+      transform: translateY(100%);
       opacity: 0;
     }
     to {
-      transform: translateX(0);
+      transform: translateY(0);
       opacity: 1;
     }
   }
@@ -1238,47 +1300,79 @@ const styles = `
     text-align: center;
     padding: 3rem 2rem;
     color: #64748b;
+    animation: emptyStateIn 0.5s ease-out;
+  }
+
+  @keyframes emptyStateIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .empty-state-icon {
-    font-size: 3.5rem;
-    margin-bottom: 1rem;
-    opacity: 0.8;
+    font-size: 4rem;
+    margin-bottom: 1.5rem;
+    opacity: 0.9;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, #f3e8ff 0%, #dbeafe 100%);
+    border-radius: 50%;
+    animation: iconFloat 3s ease-in-out infinite;
+  }
+
+  @keyframes iconFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .empty-state-icon.search-icon {
+    background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
   }
 
   .empty-state-title {
-    font-size: 1.125rem;
+    font-size: 1.25rem;
     font-weight: 600;
     color: #1e293b;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
   }
 
   .empty-state-description {
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     color: #64748b;
-    margin-bottom: 1.5rem;
-    max-width: 300px;
+    margin-bottom: 1.75rem;
+    max-width: 320px;
     margin-left: auto;
     margin-right: auto;
+    line-height: 1.6;
   }
 
   .empty-state-action {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
-    background: #1e40af;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%);
     color: white;
     border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(156, 39, 176, 0.3);
   }
 
   .empty-state-action:hover {
-    background: #1e3a8a;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(156, 39, 176, 0.4);
   }
 
   /* Export button */
@@ -1422,6 +1516,95 @@ const styles = `
 
   .confirm-actions .btn {
     min-width: 100px;
+  }
+
+  /* Success Animation */
+  .success-animation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .success-animation-content {
+    background: white;
+    border-radius: 20px;
+    padding: 3rem;
+    text-align: center;
+    animation: successBounceIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+
+  .success-checkmark {
+    margin-bottom: 1.5rem;
+  }
+
+  .success-checkmark svg {
+    filter: drop-shadow(0 4px 6px rgba(16, 185, 129, 0.3));
+  }
+
+  .success-circle {
+    stroke-dasharray: 166;
+    stroke-dashoffset: 166;
+    animation: successCircle 0.6s ease-in-out forwards;
+  }
+
+  .success-check {
+    stroke-dasharray: 48;
+    stroke-dashoffset: 48;
+    animation: successCheck 0.3s ease-in-out 0.6s forwards;
+  }
+
+  @keyframes successCircle {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes successCheck {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes successBounceIn {
+    0% {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    70% {
+      transform: scale(0.9);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .success-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #10b981;
+    margin-bottom: 0.5rem;
+  }
+
+  .success-subtitle {
+    color: #6b7280;
+    font-size: 1rem;
   }
 
   /* Tooltip */
@@ -1945,6 +2128,60 @@ const styles = `
     transform: none;
   }
 
+  .remember-me {
+    display: flex;
+    align-items: center;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #4a5568;
+    user-select: none;
+  }
+
+  .checkbox-label input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+  }
+
+  .checkbox-custom {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+
+  .checkbox-label:hover .checkbox-custom {
+    border-color: #9C27B0;
+  }
+
+  .checkbox-label input:checked ~ .checkbox-custom {
+    background: #9C27B0;
+    border-color: #9C27B0;
+  }
+
+  .checkbox-label input:checked ~ .checkbox-custom::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+
   .login-link {
     text-align: center;
     margin-top: 1rem;
@@ -2183,7 +2420,7 @@ const getDueDateStatus = (dueDate) => {
 
 // Get subscription status (expiring, expired, or OK)
 const getSubscriptionStatus = (subscriptionEnd) => {
-  if (!subscriptionEnd) return { class: '', label: '', status: 'none' };
+  if (!subscriptionEnd) return { class: 'badge-gray', label: 'No subscription', status: 'none' };
   const end = new Date(subscriptionEnd);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -2191,11 +2428,13 @@ const getSubscriptionStatus = (subscriptionEnd) => {
   const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
-    return { class: 'badge-red', label: 'Expired', status: 'expired', days: Math.abs(diffDays) };
+    return { class: 'badge-red', label: `Expired ${Math.abs(diffDays)}d ago`, status: 'expired', days: Math.abs(diffDays) };
+  } else if (diffDays <= 7) {
+    return { class: 'badge-red', label: `${diffDays}d left!`, status: 'critical', days: diffDays };
   } else if (diffDays <= 30) {
-    return { class: 'badge-yellow', label: `${diffDays} days left`, status: 'expiring', days: diffDays };
+    return { class: 'badge-yellow', label: `${diffDays}d left`, status: 'expiring', days: diffDays };
   } else {
-    return { class: '', label: '', status: 'ok', days: diffDays };
+    return { class: 'badge-active', label: 'Active', status: 'ok', days: diffDays };
   }
 };
 
@@ -2656,7 +2895,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
           </div>
         ) : filteredFirms.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">🔍</div>
+            <div className="empty-state-icon search-icon">🔍</div>
             <div className="empty-state-title">No matches found</div>
             <p className="empty-state-description">
               Try adjusting your search or filter criteria.
@@ -2771,11 +3010,9 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                             <span>{formatDate(firm.subscription_end)}</span>
-                            {subStatus.label && (
-                              <span className={`badge ${subStatus.class}`} style={{ fontSize: '0.65rem' }}>
-                                {subStatus.label}
-                              </span>
-                            )}
+                            <span className={`badge ${subStatus.class}`} style={{ fontSize: '0.65rem' }}>
+                              {subStatus.label}
+                            </span>
                           </div>
                         );
                       })()}
@@ -3766,7 +4003,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
           </div>
         ) : filteredScheduled.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">🔍</div>
+            <div className="empty-state-icon search-icon">🔍</div>
             <div className="empty-state-title">No matching scheduled invoices</div>
             <p className="empty-state-description">
               Try adjusting your search or filter criteria.
@@ -4073,6 +4310,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedInvoices, setSelectedInvoices] = useState(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const itemsPerPage = 10;
   const { addToast } = useToast();
   const confirm = useConfirm();
@@ -4181,6 +4419,9 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     try {
       const result = await api.sendInvoice(id);
       if (result.error) throw new Error(result.error);
+      // Show success animation
+      setShowSuccessAnimation(true);
+      setTimeout(() => setShowSuccessAnimation(false), 3000);
       addToast(result.message, 'success');
       onRefresh();
     } catch (error) {
@@ -4279,7 +4520,23 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   };
 
   return (
-    <div className="card">
+    <>
+      {/* Success Animation Overlay */}
+      {showSuccessAnimation && (
+        <div className="success-animation-overlay">
+          <div className="success-animation-content">
+            <div className="success-checkmark">
+              <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" className="success-circle" />
+                <polyline points="8 12 11 15 16 9" className="success-check" />
+              </svg>
+            </div>
+            <h3 className="success-title">Invoice Sent!</h3>
+            <p className="success-subtitle">The invoice has been emailed successfully</p>
+          </div>
+        </div>
+      )}
+      <div className="card">
       <div className="card-header">
         <h2 className="card-title">Invoice History</h2>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -4407,7 +4664,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
         </div>
       ) : filteredInvoices.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">🔍</div>
+          <div className="empty-state-icon search-icon">🔍</div>
           <div className="empty-state-title">No matches found</div>
           <p className="empty-state-description">
             Try adjusting your search or filter criteria.
@@ -4581,7 +4838,8 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
           )}
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -4591,6 +4849,7 @@ function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(localStorage.getItem('judy_remember') === 'true');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -4610,7 +4869,7 @@ function LoginPage() {
     setError('');
     setLoading(true);
 
-    const result = await login(email, password);
+    const result = await login(email, password, rememberMe);
 
     if (!result.success) {
       setError(result.error || 'Login failed');
@@ -4742,6 +5001,18 @@ function LoginPage() {
             placeholder="Enter your password"
             required
           />
+        </div>
+
+        <div className="remember-me">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+            />
+            <span className="checkbox-custom"></span>
+            Remember me
+          </label>
         </div>
 
         <button type="submit" className="login-btn" disabled={loading}>
@@ -5484,6 +5755,21 @@ function AppContent() {
     setMobileMenuOpen(false);
   }, [activeTab]);
 
+  // Calculate notification counts
+  const overdueCount = invoices.filter(inv => {
+    if (inv.status === 'paid') return false;
+    const dueDate = new Date(inv.due_date);
+    return dueDate < new Date();
+  }).length;
+
+  const expiringCount = firms.filter(firm => {
+    if (!firm.subscription_end) return false;
+    const endDate = new Date(firm.subscription_end);
+    const today = new Date();
+    const daysUntilExpiry = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+    return daysUntilExpiry <= 30 && daysUntilExpiry >= 0;
+  }).length;
+
   return (
     <div className="app">
       <style>{styles}</style>
@@ -5521,6 +5807,7 @@ function AppContent() {
               onClick={() => setActiveTab('dashboard')}
             >
               Dashboard
+              {(overdueCount + expiringCount) > 0 && <span className="nav-badge nav-badge-danger">{overdueCount + expiringCount}</span>}
             </button>
             <button
               className={`nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
@@ -5534,6 +5821,7 @@ function AppContent() {
               onClick={() => setActiveTab('firms')}
             >
               Law Firms
+              {expiringCount > 0 && <span className="nav-badge nav-badge-warning">{expiringCount}</span>}
               <span className="shortcut-hint"><span className="shortcut-key">Ctrl</span>+<span className="shortcut-key">F</span></span>
             </button>
             <button
@@ -5547,6 +5835,7 @@ function AppContent() {
               onClick={() => setActiveTab('history')}
             >
               History
+              {overdueCount > 0 && <span className="nav-badge nav-badge-danger">{overdueCount}</span>}
               <span className="shortcut-hint"><span className="shortcut-key">Ctrl</span>+<span className="shortcut-key">H</span></span>
             </button>
             <button
