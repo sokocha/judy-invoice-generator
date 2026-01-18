@@ -969,18 +969,43 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
         </div>
       </div>
 
-      <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+      <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
         <button className="btn btn-secondary" onClick={handlePreview} disabled={loading}>
           Preview
         </button>
-        <button className="btn btn-primary" onClick={() => handleDownload('pdf')} disabled={loading}>
+        <button
+          className="btn"
+          onClick={() => handleDownload('pdf')}
+          disabled={loading}
+          style={{ background: '#dc2626', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"/>
+          </svg>
           {loading ? 'Processing...' : 'Download PDF'}
         </button>
-        <button className="btn btn-secondary" onClick={() => handleDownload('docx')} disabled={loading}>
-          {loading ? 'Processing...' : 'Download DOCX'}
+        <button
+          className="btn"
+          onClick={() => handleDownload('docx')}
+          disabled={loading}
+          style={{ background: '#2b579a', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13zm-4 5.5l1.1 4.5h.8l.9-3 .9 3h.8l1.1-4.5h-1l-.6 2.8-.9-2.8h-.6l-.9 2.8-.6-2.8H9z"/>
+          </svg>
+          {loading ? 'Processing...' : 'Download Word'}
         </button>
-        <button className="btn btn-success" onClick={handleSend} disabled={loading}>
-          {loading ? 'Processing...' : 'Generate & Send (PDF)'}
+        <button
+          className="btn"
+          onClick={handleSend}
+          disabled={loading}
+          style={{ background: '#059669', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+          {loading ? 'Processing...' : 'Generate & Send'}
         </button>
       </div>
 
