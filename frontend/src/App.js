@@ -2285,7 +2285,8 @@ const styles = `
 // API Functions - Using query parameters for Vercel Hobby plan compatibility
 // Helper to get auth headers
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('judy_token');
+  // Check both localStorage (remember me) and sessionStorage (session only)
+  const token = localStorage.getItem('judy_token') || sessionStorage.getItem('judy_token');
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 
