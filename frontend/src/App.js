@@ -1338,14 +1338,14 @@ function InvoiceHistorySection({ invoices, onRefresh }) {
                   <td>
                     <div className="action-buttons">
                       <button
-                        className="btn btn-secondary btn-sm"
+                        className="btn btn-sm"
                         onClick={() => handleDownload(inv.id, inv.invoice_number, 'pdf')}
                         disabled={loading[`${inv.id}-pdf`]}
                         title="Download PDF"
-                        style={{ padding: '0.375rem 0.5rem' }}
+                        style={{ padding: '0.375rem 0.5rem', background: '#fee2e2', color: '#dc2626' }}
                       >
                         {loading[`${inv.id}-pdf`] ? '...' : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                             <polyline points="14 2 14 8 20 8"/>
                             <path d="M9 15h6"/>
@@ -1354,14 +1354,14 @@ function InvoiceHistorySection({ invoices, onRefresh }) {
                         )}
                       </button>
                       <button
-                        className="btn btn-secondary btn-sm"
+                        className="btn btn-sm"
                         onClick={() => handleDownload(inv.id, inv.invoice_number, 'docx')}
                         disabled={loading[`${inv.id}-docx`]}
                         title="Download DOCX"
-                        style={{ padding: '0.375rem 0.5rem' }}
+                        style={{ padding: '0.375rem 0.5rem', background: '#dbeafe', color: '#2563eb' }}
                       >
                         {loading[`${inv.id}-docx`] ? '...' : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                             <polyline points="14 2 14 8 20 8"/>
                             <line x1="16" y1="13" x2="8" y2="13"/>
