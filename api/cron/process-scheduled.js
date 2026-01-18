@@ -38,9 +38,8 @@ async function processScheduledInvoices() {
       // Generate invoice number
       const invoiceNumber = await db.getNextInvoiceNumber();
 
-      // Calculate due date (30 days from now)
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 30);
+      // Due date is the scheduled date (when the invoice was meant to be sent)
+      const dueDate = new Date(scheduled.schedule_date);
 
       // Generate invoice
       const result = await generateInvoice({

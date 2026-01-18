@@ -2160,9 +2160,8 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   };
 
   useEffect(() => {
-    // Set default due date to 30 days from now
+    // Set default due date to today (manual invoices are due same day)
     const date = new Date();
-    date.setDate(date.getDate() + 30);
     setFormData(prev => ({ ...prev, dueDate: date.toISOString().split('T')[0] }));
   }, []);
 

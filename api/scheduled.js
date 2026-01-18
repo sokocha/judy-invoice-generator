@@ -66,8 +66,8 @@ async function processSingleScheduledInvoice(id) {
   }
 
   const invoiceNumber = await db.getNextInvoiceNumber();
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 30);
+  // Due date is the scheduled date (when the invoice was meant to be sent)
+  const dueDate = new Date(scheduled.schedule_date);
 
   const result = await generateInvoicePDF({
     firmId: scheduled.firm_id,
@@ -105,8 +105,8 @@ async function processScheduledInvoices() {
   for (const scheduled of pending) {
     try {
       const invoiceNumber = await db.getNextInvoiceNumber();
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 30);
+      // Due date is the scheduled date (when the invoice was meant to be sent)
+      const dueDate = new Date(scheduled.schedule_date);
 
       const result = await generateInvoice({
         firmId: scheduled.firm_id,
