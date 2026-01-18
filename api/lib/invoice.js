@@ -1,7 +1,6 @@
 import pkg from 'docx-templates';
 const { createReport } = pkg;
 import { list } from '@vercel/blob';
-import PDFDocument from 'pdfkit';
 import * as db from './db.js';
 
 // Format number with commas and 2 decimal places
@@ -163,158 +162,53 @@ export const getInvoicePreview = async (invoiceData) => {
   };
 };
 
-// Generate PDF invoice
+// Generate PDF invoice using ConvertAPI (preserves template styling)
 export const generateInvoicePDF = async (invoiceData) => {
-  const {
-    firmId,
-    planType,
-    duration,
-    numUsers,
-    baseAmount,
-    dueDate,
-    invoiceNumber
-  } = invoiceData;
+  // First generate the DOCX
+  const docxResult = await generateInvoice(invoiceData);
 
-  // Get firm details
-  const firm = await db.getFirmById(firmId);
-  if (!firm) {
-    throw new Error('Law firm not found');
+  // Convert DOCX to PDF using ConvertAPI
+  const convertApiSecret = process.env.CONVERTAPI_SECRET;
+  if (!convertApiSecret) {
+    throw new Error('CONVERTAPI_SECRET environment variable not set. Please add your ConvertAPI secret key.');
   }
 
-  // Calculate amounts
-  const amounts = calculateAmounts(baseAmount, numUsers);
-
-  // Create PDF document
-  const doc = new PDFDocument({ margin: 50 });
-  const chunks = [];
-
-  doc.on('data', chunk => chunks.push(chunk));
-
-  // Colors
-  const primaryColor = planType === 'plus' ? '#8B2B8B' : '#2B5B8B';
-  const textColor = '#333333';
-
-  // Header
-  doc.fontSize(24).fillColor(primaryColor).font('Helvetica-Bold')
-    .text('JUDY', 50, 50);
-  doc.fontSize(10).fillColor(textColor).font('Helvetica')
-    .text('LEGAL RESEARCH', 50, 78);
-
-  // Invoice title
-  doc.fontSize(16).fillColor(primaryColor).font('Helvetica-BoldOblique')
-    .text(`INVOICE #${invoiceNumber}`, 50, 120);
-
-  // Due date
-  doc.fontSize(10).fillColor(textColor).font('Helvetica-Bold')
-    .text('Due Date: ', 50, 150, { continued: true })
-    .font('Helvetica')
-    .text(formatDate(dueDate));
-
-  // Bill To section
-  doc.fontSize(10).font('Helvetica-Bold')
-    .text('Bill To:', 50, 180);
-  doc.font('Helvetica')
-    .text(firm.firm_name, 50, 195)
-    .text(firm.street_address, 50, 210)
-    .text(`${firm.city}, Ghana`, 50, 225);
-
-  // Table header
-  const tableTop = 270;
-  const col1 = 50;
-  const col2 = 280;
-  const col3 = 360;
-  const col4 = 440;
-
-  // Header background
-  doc.rect(col1, tableTop, 500, 25).fill(primaryColor);
-
-  doc.fontSize(10).fillColor('#FFFFFF').font('Helvetica-Bold')
-    .text('DESCRIPTION', col1 + 10, tableTop + 7)
-    .text('DURATION', col2 + 10, tableTop + 7)
-    .text('USER(S)', col3 + 10, tableTop + 7)
-    .text('AMOUNT (GHS)', col4 + 10, tableTop + 7);
-
-  // Table row
-  const rowTop = tableTop + 25;
-  doc.rect(col1, rowTop, 500, 30).stroke('#CCCCCC');
-
-  const planName = planType === 'plus' ? 'JUDY Plus Plan' : 'JUDY Standard Plan';
-  doc.fillColor(textColor).font('Helvetica')
-    .text(planName, col1 + 10, rowTop + 10)
-    .text(duration, col2 + 10, rowTop + 10)
-    .text(numUsers.toString(), col3 + 10, rowTop + 10)
-    .text(formatAmount(baseAmount), col4 + 10, rowTop + 10);
-
-  // Summary section
-  const summaryTop = rowTop + 60;
-  const labelX = 350;
-  const valueX = 480;
-
-  doc.font('Helvetica')
-    .text('Subtotal:', labelX, summaryTop)
-    .text(`GHS ${formatAmount(amounts.subtotal)}`, valueX, summaryTop, { align: 'right', width: 70 });
-
-  doc.text('GTFL (2.5%):', labelX, summaryTop + 20)
-    .text(`GHS ${formatAmount(amounts.gtfl)}`, valueX, summaryTop + 20, { align: 'right', width: 70 });
-
-  doc.text('NIHL (2.5%):', labelX, summaryTop + 40)
-    .text(`GHS ${formatAmount(amounts.nihl)}`, valueX, summaryTop + 40, { align: 'right', width: 70 });
-
-  doc.text('VAT (15%):', labelX, summaryTop + 60)
-    .text(`GHS ${formatAmount(amounts.vat)}`, valueX, summaryTop + 60, { align: 'right', width: 70 });
-
-  // Total
-  doc.rect(labelX - 10, summaryTop + 80, 160, 25).fill(primaryColor);
-  doc.fillColor('#FFFFFF').font('Helvetica-Bold')
-    .text('TOTAL:', labelX, summaryTop + 87)
-    .text(`GHS ${formatAmount(amounts.total)}`, valueX, summaryTop + 87, { align: 'right', width: 70 });
-
-  // Payment details
-  const paymentTop = summaryTop + 140;
-  doc.fillColor(textColor).font('Helvetica-Bold')
-    .text('Payment Details:', 50, paymentTop);
-
-  doc.font('Helvetica')
-    .text('Account Name: JUDY INNOVATIVE TECH LTD', 50, paymentTop + 20)
-    .text('Account Number: 216116279110', 50, paymentTop + 35)
-    .text('Bank: Guaranty Trust Bank', 50, paymentTop + 50)
-    .text('Bank Address: Lagos Avenue, East Legon, Accra', 50, paymentTop + 65);
-
-  // Footer
-  doc.fontSize(9).fillColor('#666666')
-    .text('JUDY INNOVATIVE TECH LTD', 50, 700)
-    .text('19 Banana Street, East Legon, Accra, Ghana', 50, 715);
-
-  doc.end();
-
-  // Wait for PDF to be generated
-  const buffer = await new Promise((resolve) => {
-    doc.on('end', () => {
-      resolve(Buffer.concat(chunks));
+  try {
+    // Upload DOCX and convert to PDF
+    const formData = new FormData();
+    const docxBlob = new Blob([docxResult.buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     });
-  });
+    formData.append('File', docxBlob, 'invoice.docx');
 
-  // Create invoice record in database
-  const invoiceRecord = await db.createInvoice({
-    invoice_number: invoiceNumber,
-    firm_id: parseInt(firmId),
-    plan_type: planType,
-    duration,
-    num_users: numUsers,
-    base_amount: baseAmount,
-    subtotal: amounts.subtotal,
-    gtfl: amounts.gtfl,
-    nihl: amounts.nihl,
-    vat: amounts.vat,
-    total: amounts.total,
-    due_date: dueDate,
-    status: 'draft'
-  });
+    const response = await fetch(`https://v2.convertapi.com/convert/docx/to/pdf?Secret=${convertApiSecret}`, {
+      method: 'POST',
+      body: formData
+    });
 
-  return {
-    buffer,
-    invoice: invoiceRecord,
-    firm,
-    filename: `Invoice_${invoiceNumber}_${firm.firm_name.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
-  };
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`ConvertAPI error: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.Files || result.Files.length === 0) {
+      throw new Error('ConvertAPI returned no files');
+    }
+
+    // Get the PDF file data (base64 encoded)
+    const pdfBase64 = result.Files[0].FileData;
+    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+
+    return {
+      buffer: pdfBuffer,
+      invoice: docxResult.invoice,
+      firm: docxResult.firm,
+      filename: docxResult.filename.replace('.docx', '.pdf')
+    };
+  } catch (error) {
+    console.error('PDF conversion error:', error);
+    throw new Error(`Failed to convert to PDF: ${error.message}`);
+  }
 };
