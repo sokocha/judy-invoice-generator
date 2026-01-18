@@ -26,10 +26,16 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
     day: 'numeric'
   });
 
+  // Combine firm's stored CC emails with any additional emails from the form
+  const firmCcEmails = firm.cc_emails
+    ? firm.cc_emails.split(',').map(e => e.trim()).filter(e => e)
+    : [];
+  const allCcEmails = [...new Set([...firmCcEmails, ...additionalEmails])]; // Remove duplicates
+
   const mailOptions = {
     from: `"${config.from_name || 'JUDY'}" <${config.from_email}>`,
     to: firm.email,
-    cc: additionalEmails.length > 0 ? additionalEmails.join(', ') : undefined,
+    cc: allCcEmails.length > 0 ? allCcEmails.join(', ') : undefined,
     subject: `Invoice ${invoice.invoice_number} from JUDY`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

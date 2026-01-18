@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS law_firms (
   street_address VARCHAR(255),
   city VARCHAR(100),
   email VARCHAR(255) NOT NULL,
+  cc_emails TEXT,
   plan_type VARCHAR(20) DEFAULT 'standard',
   num_users INTEGER DEFAULT 1,
   subscription_start DATE,
@@ -15,6 +16,14 @@ CREATE TABLE IF NOT EXISTS law_firms (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add cc_emails column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'law_firms' AND column_name = 'cc_emails') THEN
+    ALTER TABLE law_firms ADD COLUMN cc_emails TEXT;
+  END IF;
+END $$;
 
 -- Invoices table
 CREATE TABLE IF NOT EXISTS invoices (

@@ -97,7 +97,11 @@ export default async function handler(req, res) {
         additionalEmails || []
       );
 
-      const allRecipients = [result.firm.email, ...(additionalEmails || [])];
+      // Build recipient list for the message (firm email + firm CC emails + additional emails)
+      const firmCcEmails = result.firm.cc_emails
+        ? result.firm.cc_emails.split(',').map(e => e.trim()).filter(e => e)
+        : [];
+      const allRecipients = [...new Set([result.firm.email, ...firmCcEmails, ...(additionalEmails || [])])];
       return res.status(200).json({
         invoice: result.invoice,
         sent: true,

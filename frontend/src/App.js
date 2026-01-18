@@ -1637,6 +1637,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
     street_address: '',
     city: '',
     email: '',
+    cc_emails: '',
     plan_type: 'standard',
     num_users: 1,
     subscription_start: '',
@@ -1720,6 +1721,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
         street_address: firm.street_address || '',
         city: firm.city || '',
         email: firm.email || '',
+        cc_emails: firm.cc_emails || '',
         plan_type: firm.plan_type || 'standard',
         num_users: firm.num_users || 1,
         subscription_start: firm.subscription_start ? firm.subscription_start.split('T')[0] : '',
@@ -1733,6 +1735,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
         street_address: '',
         city: '',
         email: '',
+        cc_emails: '',
         plan_type: 'standard',
         num_users: 1,
         subscription_start: '',
@@ -2015,6 +2018,18 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
               />
               {errors.email && <div className="form-error">{errors.email}</div>}
             </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label>CC Emails</label>
+              <input
+                type="text"
+                value={formData.cc_emails}
+                onChange={e => setFormData({ ...formData, cc_emails: e.target.value })}
+                placeholder="e.g., accounts@firm.com, finance@firm.com (comma-separated)"
+              />
+              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                Additional email addresses to CC on invoices (comma-separated)
+              </small>
+            </div>
             <div className={`form-group ${errors.street_address ? 'has-error' : formData.street_address ? 'has-success' : ''}`}>
               <label>Street Address *</label>
               <input
@@ -2229,10 +2244,11 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
       addToast('Please select a law firm', 'error');
       return;
     }
-    const allRecipients = [selectedFirm?.email, ...additionalEmails].filter(Boolean);
-    const recipientsList = allRecipients.length > 1
-      ? `${selectedFirm?.email} and ${additionalEmails.length} other${additionalEmails.length > 1 ? 's' : ''}`
-      : selectedFirm?.email;
+    // Include firm's stored CC emails in the recipient list
+    const firmCcEmails = selectedFirm?.cc_emails
+      ? selectedFirm.cc_emails.split(',').map(e => e.trim()).filter(e => e)
+      : [];
+    const allRecipients = [...new Set([selectedFirm?.email, ...firmCcEmails, ...additionalEmails])].filter(Boolean);
     const confirmed = await confirm({
       title: 'Send Invoice',
       message: `Generate and send invoice to ${selectedFirm?.firm_name}?\n\nRecipients: ${allRecipients.join(', ')}`,
