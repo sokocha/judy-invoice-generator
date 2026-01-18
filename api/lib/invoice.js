@@ -101,12 +101,14 @@ export const generateInvoice = async (invoiceData) => {
   };
 
   // Generate document
-  const buffer = await createReport({
+  const result = await createReport({
     template,
     data: templateData,
     cmdDelimiter: ['{{', '}}'],
     processLineBreaks: true
   });
+  // Convert Uint8Array to Buffer for proper binary response
+  const buffer = Buffer.from(result);
 
   // Create invoice record in database
   const invoiceRecord = await db.createInvoice({
