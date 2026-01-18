@@ -1,22 +1,24 @@
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
+
+const sql = neon(process.env.DATABASE_URL);
 
 // Law Firms
 export async function getAllFirms() {
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT * FROM law_firms ORDER BY firm_name ASC
   `;
   return rows;
 }
 
 export async function getFirmById(id) {
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT * FROM law_firms WHERE id = ${id}
   `;
   return rows[0] || null;
 }
 
 export async function createFirm(firm) {
-  const { rows } = await sql`
+  const rows = await sql`
     INSERT INTO law_firms (firm_name, street_address, city, email, plan_type, num_users, subscription_start, subscription_end, base_price)
     VALUES (${firm.firm_name}, ${firm.street_address}, ${firm.city}, ${firm.email}, ${firm.plan_type || 'standard'}, ${firm.num_users || 1}, ${firm.subscription_start || null}, ${firm.subscription_end || null}, ${firm.base_price || 0})
     RETURNING *
@@ -25,7 +27,7 @@ export async function createFirm(firm) {
 }
 
 export async function updateFirm(id, firm) {
-  const { rows } = await sql`
+  const rows = await sql`
     UPDATE law_firms SET
       firm_name = ${firm.firm_name},
       street_address = ${firm.street_address},
@@ -50,7 +52,7 @@ export async function deleteFirm(id) {
 
 // Invoices
 export async function getAllInvoices() {
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT i.*, f.firm_name, f.email
     FROM invoices i
     LEFT JOIN law_firms f ON i.firm_id = f.id
@@ -60,7 +62,7 @@ export async function getAllInvoices() {
 }
 
 export async function getInvoiceById(id) {
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT i.*, f.firm_name, f.street_address, f.city, f.email
     FROM invoices i
     LEFT JOIN law_firms f ON i.firm_id = f.id
@@ -70,7 +72,7 @@ export async function getInvoiceById(id) {
 }
 
 export async function getInvoiceByNumber(invoiceNumber) {
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT i.*, f.firm_name, f.street_address, f.city, f.email
     FROM invoices i
     LEFT JOIN law_firms f ON i.firm_id = f.id
@@ -80,7 +82,7 @@ export async function getInvoiceByNumber(invoiceNumber) {
 }
 
 export async function createInvoice(invoice) {
-  const { rows } = await sql`
+  const rows = await sql`
     INSERT INTO invoices (invoice_number, firm_id, plan_type, duration, num_users, base_amount, subtotal, gtfl, nihl, vat, total, due_date, status)
     VALUES (${invoice.invoice_number}, ${invoice.firm_id}, ${invoice.plan_type}, ${invoice.duration}, ${invoice.num_users}, ${invoice.base_amount}, ${invoice.subtotal}, ${invoice.gtfl}, ${invoice.nihl}, ${invoice.vat}, ${invoice.total}, ${invoice.due_date}, ${invoice.status || 'draft'})
     RETURNING *
@@ -100,7 +102,7 @@ export async function getNextInvoiceNumber() {
   const year = new Date().getFullYear();
   const prefix = `JUDY-${year}-`;
 
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT invoice_number FROM invoices
     WHERE invoice_number LIKE ${prefix + '%'}
     ORDER BY invoice_number DESC
@@ -120,7 +122,7 @@ export async function getNextInvoiceNumber() {
 
 // Scheduled Invoices
 export async function getAllScheduledInvoices() {
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT s.*, f.firm_name, f.email
     FROM scheduled_invoices s
     LEFT JOIN law_firms f ON s.firm_id = f.id
@@ -132,7 +134,7 @@ export async function getAllScheduledInvoices() {
 export async function getPendingScheduledInvoices() {
   const today = new Date().toISOString().split('T')[0];
 
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT s.*, f.firm_name, f.street_address, f.city, f.email
     FROM scheduled_invoices s
     LEFT JOIN law_firms f ON s.firm_id = f.id
@@ -143,7 +145,7 @@ export async function getPendingScheduledInvoices() {
 }
 
 export async function createScheduledInvoice(scheduled) {
-  const { rows } = await sql`
+  const rows = await sql`
     INSERT INTO scheduled_invoices (firm_id, schedule_date, plan_type, duration, num_users, base_amount, status)
     VALUES (${scheduled.firm_id}, ${scheduled.schedule_date}, ${scheduled.plan_type}, ${scheduled.duration}, ${scheduled.num_users || 1}, ${scheduled.base_amount}, 'pending')
     RETURNING *
@@ -166,7 +168,7 @@ export async function deleteScheduledInvoice(id) {
 
 // Email Config
 export async function getEmailConfig() {
-  const { rows } = await sql`SELECT * FROM email_config WHERE id = 1`;
+  const rows = await sql`SELECT * FROM email_config WHERE id = 1`;
   return rows[0] || {
     id: 1,
     smtp_host: '',
