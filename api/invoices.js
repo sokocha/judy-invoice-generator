@@ -1,5 +1,3 @@
-import * as db from './lib/db.js';
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -13,6 +11,9 @@ export default async function handler(req, res) {
   const { action, id } = req.query;
 
   try {
+    // Dynamic import db to catch any errors
+    const db = await import('./lib/db.js');
+
     // GET /api/invoices - List all invoices
     if (req.method === 'GET' && !action) {
       const invoices = await db.getAllInvoices();
@@ -99,6 +100,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Invoices API error:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message, stack: error.stack });
   }
 }
