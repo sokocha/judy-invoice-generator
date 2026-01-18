@@ -22,7 +22,7 @@ export const formatDate = (dateStr) => {
 // GTFL, NIHL, VAT are calculated as percentages of BASE
 // TOTAL = BASE + GTFL + NIHL + VAT
 export const calculateAmounts = (baseAmount) => {
-  const base = baseAmount;
+  const base = Number(baseAmount) || 0;
   const gtfl = base * 0.025;  // 2.5% of base
   const nihl = base * 0.025;  // 2.5% of base
   const vat = base * 0.15;    // 15% of base
