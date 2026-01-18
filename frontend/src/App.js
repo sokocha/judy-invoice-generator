@@ -23,7 +23,7 @@ const styles = `
   }
   
   .header {
-    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+    background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%);
     color: white;
     padding: 1rem 2rem;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
