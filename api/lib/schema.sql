@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS law_firms (
   bcc_emails TEXT,
   include_default_bcc BOOLEAN DEFAULT true,
   plan_type VARCHAR(20) DEFAULT 'standard',
+  plan_duration VARCHAR(50) DEFAULT '12 months',
   num_users INTEGER DEFAULT 1,
   subscription_start DATE,
   subscription_end DATE,
@@ -40,6 +41,14 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'law_firms' AND column_name = 'include_default_bcc') THEN
     ALTER TABLE law_firms ADD COLUMN include_default_bcc BOOLEAN DEFAULT true;
+  END IF;
+END $$;
+
+-- Add plan_duration column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'law_firms' AND column_name = 'plan_duration') THEN
+    ALTER TABLE law_firms ADD COLUMN plan_duration VARCHAR(50) DEFAULT '12 months';
   END IF;
 END $$;
 

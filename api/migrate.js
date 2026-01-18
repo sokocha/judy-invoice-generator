@@ -59,6 +59,20 @@ export default async function handler(req, res) {
     `;
     migrations.push('include_default_bcc');
 
+    // Add plan_duration column if it doesn't exist
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'law_firms' AND column_name = 'plan_duration'
+        ) THEN
+          ALTER TABLE law_firms ADD COLUMN plan_duration VARCHAR(50) DEFAULT '12 months';
+        END IF;
+      END $$
+    `;
+    migrations.push('plan_duration');
+
     return res.status(200).json({
       success: true,
       message: `Migration completed: ${migrations.join(', ')} columns processed`

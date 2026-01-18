@@ -1654,6 +1654,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
     bcc_emails: '',
     include_default_bcc: true,
     plan_type: 'standard',
+    plan_duration: '12 months',
     num_users: 1,
     subscription_start: '',
     subscription_end: '',
@@ -1740,6 +1741,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
         bcc_emails: firm.bcc_emails || '',
         include_default_bcc: firm.include_default_bcc !== false,
         plan_type: firm.plan_type || 'standard',
+        plan_duration: firm.plan_duration || '12 months',
         num_users: firm.num_users || 1,
         subscription_start: firm.subscription_start ? firm.subscription_start.split('T')[0] : '',
         subscription_end: firm.subscription_end ? firm.subscription_end.split('T')[0] : '',
@@ -1756,6 +1758,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
         bcc_emails: '',
         include_default_bcc: true,
         plan_type: 'standard',
+        plan_duration: '12 months',
         num_users: 1,
         subscription_start: '',
         subscription_end: '',
@@ -2109,6 +2112,18 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
               >
                 <option value="standard">Standard</option>
                 <option value="plus">Plus</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Plan Duration</label>
+              <select
+                value={formData.plan_duration}
+                onChange={e => setFormData({ ...formData, plan_duration: e.target.value })}
+              >
+                <option value="1 month">1 Month</option>
+                <option value="3 months">3 Months</option>
+                <option value="6 months">6 Months</option>
+                <option value="12 months">12 Months</option>
               </select>
             </div>
             <div className="form-group">
@@ -2626,7 +2641,6 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     base_amount: 0
   });
   const [bulkFormData, setBulkFormData] = useState({
-    duration: '12 months',
     selectedFirms: []
   });
   const [loading, setLoading] = useState({});
@@ -2792,7 +2806,6 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   // Initialize bulk modal with firms that have subscription end dates
   const openBulkModal = () => {
     setBulkFormData({
-      duration: '12 months',
       selectedFirms: firmsWithSubscriptionEnd.map(f => f.id)
     });
     setShowBulkModal(true);
@@ -2859,7 +2872,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
           firm_id: firmId,
           schedule_date: scheduleDate,
           plan_type: firm.plan_type || 'standard',
-          duration: bulkFormData.duration,
+          duration: firm.plan_duration || '12 months',
           num_users: firm.num_users || 1,
           base_amount: firm.base_price || 0
         });
@@ -3149,20 +3162,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               <line x1="12" y1="16" x2="12" y2="12"/>
               <line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
-            Invoices will be scheduled 3 weeks before each firm's subscription end date (on a weekday).
-          </div>
-
-          <div className="form-group" style={{ marginBottom: '1rem' }}>
-            <label>Duration</label>
-            <select
-              value={bulkFormData.duration}
-              onChange={e => setBulkFormData({ ...bulkFormData, duration: e.target.value })}
-            >
-              <option value="1 month">1 Month</option>
-              <option value="3 months">3 Months</option>
-              <option value="6 months">6 Months</option>
-              <option value="12 months">12 Months</option>
-            </select>
+            Invoices will be scheduled 3 weeks before each firm's subscription end date (on a weekday). Each firm's plan type and duration will be used.
           </div>
 
           {/* Firm Selection */}
@@ -3218,7 +3218,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                           )}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.125rem' }}>
-                          {firm.num_users || 1} user(s) • {formatCurrency(firm.base_price || 0)}
+                          {firm.plan_duration || '12 months'} • {firm.num_users || 1} user(s) • {formatCurrency(firm.base_price || 0)}
                         </div>
                         <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', display: 'flex', gap: '1rem' }}>
                           <span style={{ color: '#64748b' }}>
