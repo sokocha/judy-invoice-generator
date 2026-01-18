@@ -951,7 +951,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           />
         </div>
         <div className="form-group">
-          <label>Base Amount (GHS per user)</label>
+          <label>Base Amount (GHS)</label>
           <input
             type="number"
             min="0"
@@ -1284,7 +1284,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               />
             </div>
             <div className="form-group">
-              <label>Base Amount (GHS per user)</label>
+              <label>Base Amount (GHS)</label>
               <input
                 type="number"
                 min="0"
