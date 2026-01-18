@@ -32,10 +32,18 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
     : [];
   const allCcEmails = [...new Set([...firmCcEmails, ...additionalEmails])]; // Remove duplicates
 
+  // Build BCC list: firm's BCC emails + default JUDY email if enabled
+  const firmBccEmails = firm.bcc_emails
+    ? firm.bcc_emails.split(',').map(e => e.trim()).filter(e => e)
+    : [];
+  const defaultBcc = firm.include_default_bcc !== false ? ['hello@judy.legal'] : [];
+  const allBccEmails = [...new Set([...firmBccEmails, ...defaultBcc])]; // Remove duplicates
+
   const mailOptions = {
     from: `"${config.from_name || 'JUDY'}" <${config.from_email}>`,
     to: firm.email,
     cc: allCcEmails.length > 0 ? allCcEmails.join(', ') : undefined,
+    bcc: allBccEmails.length > 0 ? allBccEmails.join(', ') : undefined,
     subject: `Invoice ${invoice.invoice_number} from JUDY`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

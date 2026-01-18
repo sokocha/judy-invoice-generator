@@ -1638,6 +1638,8 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
     city: '',
     email: '',
     cc_emails: '',
+    bcc_emails: '',
+    include_default_bcc: true,
     plan_type: 'standard',
     num_users: 1,
     subscription_start: '',
@@ -1722,6 +1724,8 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
         city: firm.city || '',
         email: firm.email || '',
         cc_emails: firm.cc_emails || '',
+        bcc_emails: firm.bcc_emails || '',
+        include_default_bcc: firm.include_default_bcc !== false,
         plan_type: firm.plan_type || 'standard',
         num_users: firm.num_users || 1,
         subscription_start: firm.subscription_start ? firm.subscription_start.split('T')[0] : '',
@@ -1736,6 +1740,8 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
         city: '',
         email: '',
         cc_emails: '',
+        bcc_emails: '',
+        include_default_bcc: true,
         plan_type: 'standard',
         num_users: 1,
         subscription_start: '',
@@ -2028,6 +2034,32 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
               />
               <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
                 Additional email addresses to CC on invoices (comma-separated)
+              </small>
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label>BCC Emails</label>
+              <input
+                type="text"
+                value={formData.bcc_emails}
+                onChange={e => setFormData({ ...formData, bcc_emails: e.target.value })}
+                placeholder="e.g., records@firm.com (comma-separated)"
+              />
+              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                Additional email addresses to BCC on invoices (comma-separated)
+              </small>
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={formData.include_default_bcc}
+                  onChange={e => setFormData({ ...formData, include_default_bcc: e.target.checked })}
+                  style={{ width: 'auto', margin: 0 }}
+                />
+                Include hello@judy.legal in BCC
+              </label>
+              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                JUDY will receive a copy of all invoices sent to this firm
               </small>
             </div>
             <div className={`form-group ${errors.street_address ? 'has-error' : formData.street_address ? 'has-success' : ''}`}>
@@ -2363,9 +2395,50 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
                 <circle cx="12" cy="7" r="4"/>
               </svg>
               {selectedFirm.email}
-              <span style={{ marginLeft: '0.25rem', background: '#1e40af', color: 'white', padding: '0.125rem 0.375rem', borderRadius: '10px', fontSize: '0.7rem' }}>Primary</span>
+              <span style={{ marginLeft: '0.25rem', background: '#1e40af', color: 'white', padding: '0.125rem 0.375rem', borderRadius: '10px', fontSize: '0.7rem' }}>To</span>
             </span>
           </div>
+
+          {/* Firm's stored CC emails */}
+          {selectedFirm.cc_emails && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              {selectedFirm.cc_emails.split(',').map(e => e.trim()).filter(e => e).map((email, index) => (
+                <span
+                  key={`cc-${index}`}
+                  className="email-tag"
+                  style={{ background: '#fef3c7', color: '#92400e', padding: '0.375rem 0.75rem', borderRadius: '20px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                >
+                  {email}
+                  <span style={{ marginLeft: '0.25rem', background: '#92400e', color: 'white', padding: '0.125rem 0.375rem', borderRadius: '10px', fontSize: '0.7rem' }}>CC</span>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Firm's stored BCC emails + default */}
+          {(selectedFirm.bcc_emails || selectedFirm.include_default_bcc !== false) && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              {selectedFirm.bcc_emails && selectedFirm.bcc_emails.split(',').map(e => e.trim()).filter(e => e).map((email, index) => (
+                <span
+                  key={`bcc-${index}`}
+                  className="email-tag"
+                  style={{ background: '#f3e8ff', color: '#6b21a8', padding: '0.375rem 0.75rem', borderRadius: '20px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                >
+                  {email}
+                  <span style={{ marginLeft: '0.25rem', background: '#6b21a8', color: 'white', padding: '0.125rem 0.375rem', borderRadius: '10px', fontSize: '0.7rem' }}>BCC</span>
+                </span>
+              ))}
+              {selectedFirm.include_default_bcc !== false && (
+                <span
+                  className="email-tag"
+                  style={{ background: '#f3e8ff', color: '#6b21a8', padding: '0.375rem 0.75rem', borderRadius: '20px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                >
+                  hello@judy.legal
+                  <span style={{ marginLeft: '0.25rem', background: '#6b21a8', color: 'white', padding: '0.125rem 0.375rem', borderRadius: '10px', fontSize: '0.7rem' }}>BCC</span>
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Additional recipients */}
           {additionalEmails.length > 0 && (
@@ -2377,6 +2450,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
                   style={{ background: '#f1f5f9', color: '#475569', padding: '0.375rem 0.75rem', borderRadius: '20px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
                 >
                   {email}
+                  <span style={{ marginLeft: '0.25rem', background: '#475569', color: 'white', padding: '0.125rem 0.375rem', borderRadius: '10px', fontSize: '0.7rem' }}>CC</span>
                   <button
                     type="button"
                     onClick={() => handleRemoveEmail(email)}

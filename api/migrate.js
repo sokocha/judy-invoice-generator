@@ -15,6 +15,7 @@ export default async function handler(req, res) {
 
   try {
     const sql = neon(process.env.DATABASE_URL);
+    const migrations = [];
 
     // Add cc_emails column if it doesn't exist
     await sql`
@@ -28,10 +29,39 @@ export default async function handler(req, res) {
         END IF;
       END $$
     `;
+    migrations.push('cc_emails');
+
+    // Add bcc_emails column if it doesn't exist
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'law_firms' AND column_name = 'bcc_emails'
+        ) THEN
+          ALTER TABLE law_firms ADD COLUMN bcc_emails TEXT;
+        END IF;
+      END $$
+    `;
+    migrations.push('bcc_emails');
+
+    // Add include_default_bcc column if it doesn't exist
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'law_firms' AND column_name = 'include_default_bcc'
+        ) THEN
+          ALTER TABLE law_firms ADD COLUMN include_default_bcc BOOLEAN DEFAULT true;
+        END IF;
+      END $$
+    `;
+    migrations.push('include_default_bcc');
 
     return res.status(200).json({
       success: true,
-      message: 'Migration completed: cc_emails column added to law_firms table'
+      message: `Migration completed: ${migrations.join(', ')} columns processed`
     });
   } catch (error) {
     console.error('Migration error:', error);

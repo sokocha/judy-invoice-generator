@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS law_firms (
   city VARCHAR(100),
   email VARCHAR(255) NOT NULL,
   cc_emails TEXT,
+  bcc_emails TEXT,
+  include_default_bcc BOOLEAN DEFAULT true,
   plan_type VARCHAR(20) DEFAULT 'standard',
   num_users INTEGER DEFAULT 1,
   subscription_start DATE,
@@ -22,6 +24,22 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'law_firms' AND column_name = 'cc_emails') THEN
     ALTER TABLE law_firms ADD COLUMN cc_emails TEXT;
+  END IF;
+END $$;
+
+-- Add bcc_emails column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'law_firms' AND column_name = 'bcc_emails') THEN
+    ALTER TABLE law_firms ADD COLUMN bcc_emails TEXT;
+  END IF;
+END $$;
+
+-- Add include_default_bcc column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'law_firms' AND column_name = 'include_default_bcc') THEN
+    ALTER TABLE law_firms ADD COLUMN include_default_bcc BOOLEAN DEFAULT true;
   END IF;
 END $$;
 

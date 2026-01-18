@@ -19,8 +19,8 @@ export async function getFirmById(id) {
 
 export async function createFirm(firm) {
   const rows = await sql`
-    INSERT INTO law_firms (firm_name, street_address, city, email, cc_emails, plan_type, num_users, subscription_start, subscription_end, base_price)
-    VALUES (${firm.firm_name}, ${firm.street_address}, ${firm.city}, ${firm.email}, ${firm.cc_emails || null}, ${firm.plan_type || 'standard'}, ${firm.num_users || 1}, ${firm.subscription_start || null}, ${firm.subscription_end || null}, ${firm.base_price || 0})
+    INSERT INTO law_firms (firm_name, street_address, city, email, cc_emails, bcc_emails, include_default_bcc, plan_type, num_users, subscription_start, subscription_end, base_price)
+    VALUES (${firm.firm_name}, ${firm.street_address}, ${firm.city}, ${firm.email}, ${firm.cc_emails || null}, ${firm.bcc_emails || null}, ${firm.include_default_bcc !== false}, ${firm.plan_type || 'standard'}, ${firm.num_users || 1}, ${firm.subscription_start || null}, ${firm.subscription_end || null}, ${firm.base_price || 0})
     RETURNING *
   `;
   return rows[0];
@@ -34,6 +34,8 @@ export async function updateFirm(id, firm) {
       city = ${firm.city},
       email = ${firm.email},
       cc_emails = ${firm.cc_emails || null},
+      bcc_emails = ${firm.bcc_emails || null},
+      include_default_bcc = ${firm.include_default_bcc !== false},
       plan_type = ${firm.plan_type},
       num_users = ${firm.num_users},
       subscription_start = ${firm.subscription_start || null},
