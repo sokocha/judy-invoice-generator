@@ -1371,11 +1371,18 @@ function InvoiceHistorySection({ invoices, onRefresh }) {
                         )}
                       </button>
                       <button
-                        className="btn btn-success btn-sm"
+                        className="btn btn-sm"
                         onClick={() => handleSend(inv.id)}
                         disabled={loading[inv.id]}
+                        title="Send via Email"
+                        style={{ padding: '0.375rem 0.5rem', background: '#d1fae5', color: '#059669' }}
                       >
-                        {loading[inv.id] === 'send' ? '...' : 'Send'}
+                        {loading[inv.id] === 'send' ? '...' : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                          </svg>
+                        )}
                       </button>
                     </div>
                   </td>
