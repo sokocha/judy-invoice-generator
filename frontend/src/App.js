@@ -1605,7 +1605,7 @@ function SettingsSection() {
         </div>
         
         <p style={{ marginBottom: '1rem', color: '#64748b' }}>
-          The scheduler automatically processes pending scheduled invoices daily at 8:00 AM.
+          The scheduler automatically processes pending scheduled invoices daily at 8:00 AM Ghana Time (GMT).
         </p>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
