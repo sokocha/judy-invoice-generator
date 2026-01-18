@@ -2501,6 +2501,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                   <th>Scheduled For</th>
                   <th>Plan</th>
                   <th>Duration</th>
+                  <th>Users</th>
                   <th>Amount</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -2522,6 +2523,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                       </span>
                     </td>
                     <td>{item.duration}</td>
+                    <td>{item.num_users}</td>
                     <td>{formatCurrency(item.base_amount)}</td>
                     <td>
                       <span className={`badge ${
