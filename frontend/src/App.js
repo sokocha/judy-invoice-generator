@@ -1392,10 +1392,10 @@ const formatCurrency = (amount) => {
 // Format date
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'short', 
-    day: 'numeric' 
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   });
 };
 
@@ -2075,6 +2075,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
                 value={formData.subscription_start}
                 onChange={e => setFormData({ ...formData, subscription_start: e.target.value })}
               />
+              {formData.subscription_start && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(formData.subscription_start)}</small>}
             </div>
             <div className="form-group">
               <label>Subscription End</label>
@@ -2083,6 +2084,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
                 value={formData.subscription_end}
                 onChange={e => setFormData({ ...formData, subscription_end: e.target.value })}
               />
+              {formData.subscription_end && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(formData.subscription_end)}</small>}
             </div>
           </div>
         </div>
@@ -2319,6 +2321,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             value={formData.dueDate}
             onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
           />
+          {formData.dueDate && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(formData.dueDate)}</small>}
         </div>
       </div>
 
@@ -2735,6 +2738,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 value={formData.schedule_date}
                 onChange={e => setFormData({ ...formData, schedule_date: e.target.value })}
               />
+              {formData.schedule_date && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(formData.schedule_date)}</small>}
             </div>
             <div className="form-group">
               <label>Plan Type</label>
