@@ -2626,7 +2626,6 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     base_amount: 0
   });
   const [bulkFormData, setBulkFormData] = useState({
-    schedule_date: '',
     duration: '12 months',
     selectedFirms: []
   });
@@ -2758,14 +2757,23 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     setClearingCompleted(false);
   };
 
-  // Initialize bulk modal with all firms selected
-  const openBulkModal = () => {
-    setBulkFormData({
-      schedule_date: '',
-      duration: '12 months',
-      selectedFirms: firms.map(f => f.id)
-    });
-    setShowBulkModal(true);
+  // Calculate schedule date: ~3 weeks before subscription end, ensuring it's a weekday
+  const calculateScheduleDate = (subscriptionEnd) => {
+    if (!subscriptionEnd) return null;
+    const endDate = new Date(subscriptionEnd);
+    // Subtract 21 days (3 weeks)
+    const scheduleDate = new Date(endDate);
+    scheduleDate.setDate(scheduleDate.getDate() - 21);
+
+    // Adjust to nearest weekday if it falls on weekend
+    const dayOfWeek = scheduleDate.getDay();
+    if (dayOfWeek === 0) { // Sunday -> move to Monday
+      scheduleDate.setDate(scheduleDate.getDate() + 1);
+    } else if (dayOfWeek === 6) { // Saturday -> move to Friday
+      scheduleDate.setDate(scheduleDate.getDate() - 1);
+    }
+
+    return scheduleDate.toISOString().split('T')[0];
   };
 
   // Check if schedule date is today or in the past (would trigger immediate send)
@@ -2776,6 +2784,18 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     const scheduleDate = new Date(dateStr);
     scheduleDate.setHours(0, 0, 0, 0);
     return scheduleDate <= today;
+  };
+
+  // Get firms that have valid subscription end dates
+  const firmsWithSubscriptionEnd = firms.filter(f => f.subscription_end);
+
+  // Initialize bulk modal with firms that have subscription end dates
+  const openBulkModal = () => {
+    setBulkFormData({
+      duration: '12 months',
+      selectedFirms: firmsWithSubscriptionEnd.map(f => f.id)
+    });
+    setShowBulkModal(true);
   };
 
   // Toggle firm selection in bulk modal
@@ -2792,7 +2812,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   const toggleAllFirms = () => {
     setBulkFormData(prev => ({
       ...prev,
-      selectedFirms: prev.selectedFirms.length === firms.length ? [] : firms.map(f => f.id)
+      selectedFirms: prev.selectedFirms.length === firmsWithSubscriptionEnd.length ? [] : firmsWithSubscriptionEnd.map(f => f.id)
     }));
   };
 
@@ -2802,17 +2822,21 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
       addToast('Please select at least one firm', 'error');
       return;
     }
-    if (!bulkFormData.schedule_date) {
-      addToast('Please select a schedule date', 'error');
-      return;
-    }
 
-    // Warn if the date would trigger immediate sending
-    if (isImmediateDate(bulkFormData.schedule_date)) {
+    // Check how many firms would have immediate dates
+    const immediateCount = bulkFormData.selectedFirms.filter(firmId => {
+      const firm = firmsWithSubscriptionEnd.find(f => f.id === firmId);
+      if (!firm) return false;
+      const scheduleDate = calculateScheduleDate(firm.subscription_end);
+      return isImmediateDate(scheduleDate);
+    }).length;
+
+    // Warn if any dates would trigger immediate sending
+    if (immediateCount > 0) {
       const confirmed = await confirm({
         title: '⚠️ Immediate Invoice Warning',
-        message: `The selected date (${formatDate(bulkFormData.schedule_date)}) is today or in the past. This will trigger IMMEDIATE invoice generation and sending to ${bulkFormData.selectedFirms.length} firm(s). Are you sure you want to proceed?`,
-        confirmText: 'Yes, Send Immediately',
+        message: `${immediateCount} firm(s) have schedule dates that are today or in the past. These invoices will be sent IMMEDIATELY when the scheduler runs. Are you sure you want to proceed?`,
+        confirmText: 'Yes, Proceed',
         cancelText: 'Cancel',
         type: 'danger'
       });
@@ -2824,13 +2848,16 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     let errorCount = 0;
 
     for (const firmId of bulkFormData.selectedFirms) {
-      const firm = firms.find(f => f.id === firmId);
+      const firm = firmsWithSubscriptionEnd.find(f => f.id === firmId);
       if (!firm) continue;
+
+      const scheduleDate = calculateScheduleDate(firm.subscription_end);
+      if (!scheduleDate) continue;
 
       try {
         await api.createScheduled({
           firm_id: firmId,
-          schedule_date: bulkFormData.schedule_date,
+          schedule_date: scheduleDate,
           plan_type: firm.plan_type || 'standard',
           duration: bulkFormData.duration,
           num_users: firm.num_users || 1,
@@ -3116,105 +3143,95 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
       {/* Bulk Schedule Modal */}
       <Modal isOpen={showBulkModal} onClose={() => setShowBulkModal(false)} title="Bulk Schedule Invoices">
         <div className="modal-body">
-          {/* Warning for immediate dates */}
-          {bulkFormData.schedule_date && isImmediateDate(bulkFormData.schedule_date) && (
-            <div className="alert alert-danger" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-              <div>
-                <strong>Warning: Immediate Send</strong>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem' }}>
-                  The selected date is today or in the past. Invoices will be sent immediately when the scheduler runs.
-                </p>
-              </div>
-            </div>
-          )}
-
           <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.5rem' }}>
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="16" x2="12" y2="12"/>
               <line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
-            Schedule invoices for multiple firms at once. Each firm's plan type, user count, and base price will be used.
+            Invoices will be scheduled 3 weeks before each firm's subscription end date (on a weekday).
           </div>
 
-          <div className="form-grid" style={{ marginBottom: '1rem' }}>
-            <div className="form-group">
-              <label>Schedule Date *</label>
-              <input
-                type="date"
-                value={bulkFormData.schedule_date}
-                onChange={e => setBulkFormData({ ...bulkFormData, schedule_date: e.target.value })}
-              />
-              {bulkFormData.schedule_date && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(bulkFormData.schedule_date)}</small>}
-            </div>
-            <div className="form-group">
-              <label>Duration</label>
-              <select
-                value={bulkFormData.duration}
-                onChange={e => setBulkFormData({ ...bulkFormData, duration: e.target.value })}
-              >
-                <option value="1 month">1 Month</option>
-                <option value="3 months">3 Months</option>
-                <option value="6 months">6 Months</option>
-                <option value="12 months">12 Months</option>
-              </select>
-            </div>
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label>Duration</label>
+            <select
+              value={bulkFormData.duration}
+              onChange={e => setBulkFormData({ ...bulkFormData, duration: e.target.value })}
+            >
+              <option value="1 month">1 Month</option>
+              <option value="3 months">3 Months</option>
+              <option value="6 months">6 Months</option>
+              <option value="12 months">12 Months</option>
+            </select>
           </div>
 
           {/* Firm Selection */}
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <label style={{ margin: 0 }}>Select Firms ({bulkFormData.selectedFirms.length} of {firms.length})</label>
+              <label style={{ margin: 0 }}>Select Firms ({bulkFormData.selectedFirms.length} of {firmsWithSubscriptionEnd.length})</label>
               <button
                 type="button"
                 className="btn btn-secondary"
                 style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
                 onClick={toggleAllFirms}
               >
-                {bulkFormData.selectedFirms.length === firms.length ? 'Deselect All' : 'Select All'}
+                {bulkFormData.selectedFirms.length === firmsWithSubscriptionEnd.length ? 'Deselect All' : 'Select All'}
               </button>
             </div>
-            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem' }}>
-              {firms.length === 0 ? (
-                <p style={{ color: '#64748b', textAlign: 'center', margin: '1rem 0' }}>No firms available. Add firms first.</p>
+            <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem' }}>
+              {firmsWithSubscriptionEnd.length === 0 ? (
+                <p style={{ color: '#64748b', textAlign: 'center', margin: '1rem 0' }}>No firms with subscription end dates. Update firm details first.</p>
               ) : (
-                firms.map(firm => (
-                  <label
-                    key={firm.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      padding: '0.5rem',
-                      cursor: 'pointer',
-                      borderRadius: '0.25rem',
-                      backgroundColor: bulkFormData.selectedFirms.includes(firm.id) ? '#f0fdf4' : 'transparent',
-                      marginBottom: '0.25rem'
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={bulkFormData.selectedFirms.includes(firm.id)}
-                      onChange={() => toggleFirmSelection(firm.id)}
-                      style={{ marginRight: '0.75rem' }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {firm.firm_name}
-                        <span className={`badge ${firm.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`} style={{ fontSize: '0.65rem' }}>
-                          {firm.plan_type === 'plus' ? 'Plus' : 'Standard'}
-                        </span>
+                firmsWithSubscriptionEnd.map(firm => {
+                  const scheduleDate = calculateScheduleDate(firm.subscription_end);
+                  const isImmediate = isImmediateDate(scheduleDate);
+                  return (
+                    <label
+                      key={firm.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '0.25rem',
+                        backgroundColor: bulkFormData.selectedFirms.includes(firm.id)
+                          ? (isImmediate ? '#fef2f2' : '#f0fdf4')
+                          : 'transparent',
+                        marginBottom: '0.25rem',
+                        border: isImmediate && bulkFormData.selectedFirms.includes(firm.id) ? '1px solid #fecaca' : '1px solid transparent'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={bulkFormData.selectedFirms.includes(firm.id)}
+                        onChange={() => toggleFirmSelection(firm.id)}
+                        style={{ marginRight: '0.75rem', marginTop: '0.25rem' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          {firm.firm_name}
+                          <span className={`badge ${firm.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`} style={{ fontSize: '0.65rem' }}>
+                            {firm.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                          </span>
+                          {isImmediate && (
+                            <span className="badge badge-red" style={{ fontSize: '0.65rem' }}>Immediate</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.125rem' }}>
+                          {firm.num_users || 1} user(s) • {formatCurrency(firm.base_price || 0)}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', display: 'flex', gap: '1rem' }}>
+                          <span style={{ color: '#64748b' }}>
+                            Ends: <strong>{formatDate(firm.subscription_end)}</strong>
+                          </span>
+                          <span style={{ color: isImmediate ? '#dc2626' : '#059669' }}>
+                            Schedule: <strong>{formatDate(scheduleDate)}</strong>
+                          </span>
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {firm.email} • {firm.num_users || 1} user(s) • {formatCurrency(firm.base_price || 0)}
-                      </div>
-                    </div>
-                  </label>
-                ))
+                    </label>
+                  );
+                })
               )}
             </div>
           </div>
