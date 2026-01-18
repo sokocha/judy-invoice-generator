@@ -519,7 +519,19 @@ const styles = `
     background: #dbeafe;
     color: #1e40af;
   }
-  
+
+  .alert-danger {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+  }
+
+  .alert-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+  }
+
   .preview-box {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
@@ -2604,6 +2616,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
 // Scheduled Invoices Section
 function ScheduledSection({ firms, scheduled, onRefresh }) {
   const [showModal, setShowModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   const [formData, setFormData] = useState({
     firm_id: '',
     schedule_date: '',
@@ -2612,8 +2625,15 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     num_users: 1,
     base_amount: 0
   });
+  const [bulkFormData, setBulkFormData] = useState({
+    schedule_date: '',
+    plan_type: 'standard',
+    duration: '12 months',
+    selectedFirms: []
+  });
   const [loading, setLoading] = useState({});
   const [formLoading, setFormLoading] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [clearingCompleted, setClearingCompleted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -2739,6 +2759,103 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     setClearingCompleted(false);
   };
 
+  // Initialize bulk modal with all firms selected
+  const openBulkModal = () => {
+    setBulkFormData({
+      schedule_date: '',
+      plan_type: 'standard',
+      duration: '12 months',
+      selectedFirms: firms.map(f => f.id)
+    });
+    setShowBulkModal(true);
+  };
+
+  // Check if schedule date is today or in the past (would trigger immediate send)
+  const isImmediateDate = (dateStr) => {
+    if (!dateStr) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const scheduleDate = new Date(dateStr);
+    scheduleDate.setHours(0, 0, 0, 0);
+    return scheduleDate <= today;
+  };
+
+  // Toggle firm selection in bulk modal
+  const toggleFirmSelection = (firmId) => {
+    setBulkFormData(prev => ({
+      ...prev,
+      selectedFirms: prev.selectedFirms.includes(firmId)
+        ? prev.selectedFirms.filter(id => id !== firmId)
+        : [...prev.selectedFirms, firmId]
+    }));
+  };
+
+  // Toggle all firms
+  const toggleAllFirms = () => {
+    setBulkFormData(prev => ({
+      ...prev,
+      selectedFirms: prev.selectedFirms.length === firms.length ? [] : firms.map(f => f.id)
+    }));
+  };
+
+  // Handle bulk schedule creation
+  const handleBulkSchedule = async () => {
+    if (bulkFormData.selectedFirms.length === 0) {
+      addToast('Please select at least one firm', 'error');
+      return;
+    }
+    if (!bulkFormData.schedule_date) {
+      addToast('Please select a schedule date', 'error');
+      return;
+    }
+
+    // Warn if the date would trigger immediate sending
+    if (isImmediateDate(bulkFormData.schedule_date)) {
+      const confirmed = await confirm({
+        title: '⚠️ Immediate Invoice Warning',
+        message: `The selected date (${formatDate(bulkFormData.schedule_date)}) is today or in the past. This will trigger IMMEDIATE invoice generation and sending to ${bulkFormData.selectedFirms.length} firm(s). Are you sure you want to proceed?`,
+        confirmText: 'Yes, Send Immediately',
+        cancelText: 'Cancel',
+        type: 'danger'
+      });
+      if (!confirmed) return;
+    }
+
+    setBulkLoading(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const firmId of bulkFormData.selectedFirms) {
+      const firm = firms.find(f => f.id === firmId);
+      if (!firm) continue;
+
+      try {
+        await api.createScheduled({
+          firm_id: firmId,
+          schedule_date: bulkFormData.schedule_date,
+          plan_type: bulkFormData.plan_type,
+          duration: bulkFormData.duration,
+          num_users: firm.num_users || 1,
+          base_amount: firm.base_price || 0
+        });
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to schedule for ${firm.firm_name}:`, error);
+        errorCount++;
+      }
+    }
+
+    setBulkLoading(false);
+    setShowBulkModal(false);
+
+    if (errorCount === 0) {
+      addToast(`Successfully scheduled ${successCount} invoice(s)`, 'success');
+    } else {
+      addToast(`Scheduled ${successCount} invoice(s), ${errorCount} failed`, 'warning');
+    }
+    onRefresh();
+  };
+
   return (
     <>
       <div className="card">
@@ -2753,6 +2870,11 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 style={{ fontSize: '0.875rem' }}
               >
                 {clearingCompleted ? 'Clearing...' : `Clear Completed (${completedCount})`}
+              </button>
+            )}
+            {firms.length > 0 && (
+              <button className="btn btn-secondary" onClick={openBulkModal} style={{ fontSize: '0.875rem' }}>
+                Bulk Schedule
               </button>
             )}
             <button className="btn btn-primary" onClick={() => setShowModal(true)}>
@@ -2989,6 +3111,129 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
           <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
           <button className="btn btn-primary" onClick={handleCreate} disabled={formLoading}>
             {formLoading ? 'Creating...' : 'Schedule'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* Bulk Schedule Modal */}
+      <Modal isOpen={showBulkModal} onClose={() => setShowBulkModal(false)} title="Bulk Schedule Invoices">
+        <div className="modal-body">
+          {/* Warning for immediate dates */}
+          {bulkFormData.schedule_date && isImmediateDate(bulkFormData.schedule_date) && (
+            <div className="alert alert-danger" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <div>
+                <strong>Warning: Immediate Send</strong>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem' }}>
+                  The selected date is today or in the past. Invoices will be sent immediately when the scheduler runs.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.5rem' }}>
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="16" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            Schedule invoices for multiple firms at once. Each firm's user count and base price will be used.
+          </div>
+
+          <div className="form-grid" style={{ marginBottom: '1rem' }}>
+            <div className="form-group">
+              <label>Schedule Date *</label>
+              <input
+                type="date"
+                value={bulkFormData.schedule_date}
+                onChange={e => setBulkFormData({ ...bulkFormData, schedule_date: e.target.value })}
+              />
+              {bulkFormData.schedule_date && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(bulkFormData.schedule_date)}</small>}
+            </div>
+            <div className="form-group">
+              <label>Plan Type</label>
+              <select
+                value={bulkFormData.plan_type}
+                onChange={e => setBulkFormData({ ...bulkFormData, plan_type: e.target.value })}
+              >
+                <option value="standard">Standard Plan</option>
+                <option value="plus">Plus Plan</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Duration</label>
+              <select
+                value={bulkFormData.duration}
+                onChange={e => setBulkFormData({ ...bulkFormData, duration: e.target.value })}
+              >
+                <option value="1 month">1 Month</option>
+                <option value="3 months">3 Months</option>
+                <option value="6 months">6 Months</option>
+                <option value="12 months">12 Months</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Firm Selection */}
+          <div className="form-group">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label style={{ margin: 0 }}>Select Firms ({bulkFormData.selectedFirms.length} of {firms.length})</label>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                onClick={toggleAllFirms}
+              >
+                {bulkFormData.selectedFirms.length === firms.length ? 'Deselect All' : 'Select All'}
+              </button>
+            </div>
+            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem' }}>
+              {firms.length === 0 ? (
+                <p style={{ color: '#64748b', textAlign: 'center', margin: '1rem 0' }}>No firms available. Add firms first.</p>
+              ) : (
+                firms.map(firm => (
+                  <label
+                    key={firm.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0.5rem',
+                      cursor: 'pointer',
+                      borderRadius: '0.25rem',
+                      backgroundColor: bulkFormData.selectedFirms.includes(firm.id) ? '#f0fdf4' : 'transparent',
+                      marginBottom: '0.25rem'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={bulkFormData.selectedFirms.includes(firm.id)}
+                      onChange={() => toggleFirmSelection(firm.id)}
+                      style={{ marginRight: '0.75rem' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 500 }}>{firm.firm_name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        {firm.email} • {firm.num_users || 1} user(s) • {formatCurrency(firm.base_price || 0)}
+                      </div>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={() => setShowBulkModal(false)}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleBulkSchedule}
+            disabled={bulkLoading || bulkFormData.selectedFirms.length === 0}
+          >
+            {bulkLoading ? 'Scheduling...' : `Schedule ${bulkFormData.selectedFirms.length} Invoice(s)`}
           </button>
         </div>
       </Modal>
@@ -3607,7 +3852,7 @@ function AppContent() {
             {activeTab === 'generate' && (
               <>
                 <GenerateInvoiceSection firms={firms} onRefresh={loadData} />
-                <InvoiceHistorySection invoices={invoices.slice(0, 5)} onRefresh={loadData} showFilters={false} />
+                <InvoiceHistorySection invoices={invoices} onRefresh={loadData} />
               </>
             )}
             {activeTab === 'firms' && (
