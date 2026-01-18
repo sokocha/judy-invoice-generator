@@ -513,6 +513,7 @@ const api = {
   }).then(r => r.json()),
   deleteScheduled: (id) => fetch(`${API_BASE}/api/scheduled?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
   processScheduled: () => fetch(`${API_BASE}/api/scheduled?action=process`, { method: 'POST' }).then(r => r.json()),
+  processScheduledSingle: (id) => fetch(`${API_BASE}/api/scheduled?action=process&id=${id}`, { method: 'POST' }).then(r => r.json()),
 
   // Email Config
   getEmailConfig: () => fetch(`${API_BASE}/api/email-config`).then(r => r.json()),
@@ -1069,7 +1070,8 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     num_users: 1,
     base_amount: 0
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState({});
+  const [formLoading, setFormLoading] = useState(false);
   const [alert, setAlert] = useState({ type: '', message: '' });
 
   // Auto-populate from selected firm
@@ -1093,7 +1095,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
       setAlert({ type: 'error', message: 'Please fill in all required fields' });
       return;
     }
-    setLoading(true);
+    setFormLoading(true);
     try {
       await api.createScheduled(formData);
       setAlert({ type: 'success', message: 'Scheduled invoice created!' });
@@ -1102,11 +1104,12 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     } catch (error) {
       setAlert({ type: 'error', message: error.message });
     }
-    setLoading(false);
+    setFormLoading(false);
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this scheduled invoice?')) return;
+    setLoading(prev => ({ ...prev, [id]: 'delete' }));
     try {
       await api.deleteScheduled(id);
       setAlert({ type: 'success', message: 'Scheduled invoice deleted!' });
@@ -1114,19 +1117,21 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     } catch (error) {
       setAlert({ type: 'error', message: error.message });
     }
+    setLoading(prev => ({ ...prev, [id]: null }));
   };
 
-  const handleProcessNow = async () => {
-    if (!window.confirm('Process all pending scheduled invoices now?')) return;
-    setLoading(true);
+  const handleProcessNow = async (id, email) => {
+    if (!window.confirm(`Process and send invoice to ${email} now?`)) return;
+    setLoading(prev => ({ ...prev, [id]: 'process' }));
     try {
-      const result = await api.processScheduled();
-      setAlert({ type: 'success', message: `Processed ${result.processed} invoice(s). ${result.errors.length} error(s).` });
+      const result = await api.processScheduledSingle(id);
+      if (result.error) throw new Error(result.error);
+      setAlert({ type: 'success', message: result.message });
       onRefresh();
     } catch (error) {
       setAlert({ type: 'error', message: error.message });
     }
-    setLoading(false);
+    setLoading(prev => ({ ...prev, [id]: null }));
   };
 
   return (
@@ -1136,14 +1141,9 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Scheduled Invoices</h2>
-          <div className="action-buttons">
-            <button className="btn btn-secondary" onClick={handleProcessNow} disabled={loading}>
-              Process Now
-            </button>
-            <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-              + Schedule Invoice
-            </button>
-          </div>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+            + Schedule Invoice
+          </button>
         </div>
 
         {scheduled.length === 0 ? (
@@ -1187,9 +1187,36 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                     </td>
                     <td>
                       {item.status === 'pending' && (
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(item.id)}>
-                          Cancel
-                        </button>
+                        <div className="action-buttons">
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => handleProcessNow(item.id, item.email)}
+                            disabled={loading[item.id]}
+                            title="Process & Send Now"
+                            style={{ padding: '0.375rem 0.5rem', background: '#d1fae5', color: '#059669' }}
+                          >
+                            {loading[item.id] === 'process' ? '...' : (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
+                                <line x1="22" y1="2" x2="11" y2="13"/>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                              </svg>
+                            )}
+                          </button>
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => handleDelete(item.id)}
+                            disabled={loading[item.id]}
+                            title="Cancel"
+                            style={{ padding: '0.375rem 0.5rem', background: '#fee2e2', color: '#dc2626' }}
+                          >
+                            {loading[item.id] === 'delete' ? '...' : (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            )}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -1270,8 +1297,8 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleCreate} disabled={loading}>
-            {loading ? 'Creating...' : 'Schedule'}
+          <button className="btn btn-primary" onClick={handleCreate} disabled={formLoading}>
+            {formLoading ? 'Creating...' : 'Schedule'}
           </button>
         </div>
       </Modal>

@@ -31,10 +31,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
-    // POST /api/scheduled?action=process
-    if (req.method === 'POST' && action === 'process') {
+    // POST /api/scheduled?action=process - Process all pending
+    if (req.method === 'POST' && action === 'process' && !id) {
       const results = await processScheduledInvoices();
       return res.status(200).json(results);
+    }
+
+    // POST /api/scheduled?action=process&id=123 - Process single invoice
+    if (req.method === 'POST' && action === 'process' && id) {
+      const result = await processSingleScheduledInvoice(id);
+      return res.status(200).json(result);
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
@@ -42,6 +48,50 @@ export default async function handler(req, res) {
     console.error('Scheduled invoices API error:', error);
     return res.status(500).json({ error: error.message, stack: error.stack });
   }
+}
+
+async function processSingleScheduledInvoice(id) {
+  const db = await import('./lib/db.js');
+  const { generateInvoicePDF } = await import('./lib/invoice.js');
+  const { sendInvoiceEmail } = await import('./lib/email.js');
+
+  // Get the scheduled invoice with firm details
+  const scheduled = await db.getScheduledInvoiceById(id);
+  if (!scheduled) {
+    throw new Error('Scheduled invoice not found');
+  }
+
+  if (scheduled.status !== 'pending') {
+    throw new Error(`Cannot process invoice with status: ${scheduled.status}`);
+  }
+
+  const invoiceNumber = await db.getNextInvoiceNumber();
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 30);
+
+  const result = await generateInvoicePDF({
+    firmId: scheduled.firm_id,
+    planType: scheduled.plan_type,
+    duration: scheduled.duration,
+    numUsers: scheduled.num_users,
+    baseAmount: scheduled.base_amount,
+    dueDate: dueDate.toISOString().split('T')[0],
+    invoiceNumber
+  });
+
+  await sendInvoiceEmail(
+    result.invoice,
+    result.firm,
+    result.buffer,
+    result.filename
+  );
+
+  await db.updateScheduledInvoiceStatus(id, 'executed');
+
+  return {
+    success: true,
+    message: `Invoice ${invoiceNumber} sent to ${result.firm.email}`
+  };
 }
 
 async function processScheduledInvoices() {

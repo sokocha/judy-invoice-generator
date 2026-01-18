@@ -121,6 +121,16 @@ export async function getNextInvoiceNumber() {
 }
 
 // Scheduled Invoices
+export async function getScheduledInvoiceById(id) {
+  const rows = await sql`
+    SELECT s.*, f.firm_name, f.street_address, f.city, f.email
+    FROM scheduled_invoices s
+    LEFT JOIN law_firms f ON s.firm_id = f.id
+    WHERE s.id = ${id}
+  `;
+  return rows[0] || null;
+}
+
 export async function getAllScheduledInvoices() {
   const rows = await sql`
     SELECT s.*, f.firm_name, f.email
