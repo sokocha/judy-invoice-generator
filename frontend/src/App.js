@@ -1392,7 +1392,10 @@ const formatCurrency = (amount) => {
 // Format date
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  // Parse date parts to avoid timezone issues with YYYY-MM-DD format
+  const [year, month, day] = dateStr.split('T')[0].split('-');
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
@@ -2523,7 +2526,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   const { addToast } = useToast();
   const confirm = useConfirm();
 
-  // Auto-populate from selected firm
+  // Auto-populate from selected firm (but don't overwrite schedule_date if already set)
   useEffect(() => {
     if (formData.firm_id) {
       const firm = firms.find(f => f.id === parseInt(formData.firm_id));
@@ -2533,7 +2536,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
           plan_type: firm.plan_type || 'standard',
           num_users: firm.num_users || 1,
           base_amount: firm.base_price || 0,
-          schedule_date: firm.subscription_end ? firm.subscription_end.split('T')[0] : prev.schedule_date
+          schedule_date: prev.schedule_date || (firm.subscription_end ? firm.subscription_end.split('T')[0] : '')
         }));
       }
     }
