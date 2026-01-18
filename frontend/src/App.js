@@ -1277,8 +1277,8 @@ function InvoiceHistorySection({ invoices, onRefresh }) {
     setLoading(prev => ({ ...prev, [`${id}-${format}`]: false }));
   };
 
-  const handleSend = async (id) => {
-    if (!window.confirm('Resend this invoice via email?')) return;
+  const handleSend = async (id, email) => {
+    if (!window.confirm(`Send invoice to ${email}?`)) return;
     setLoading(prev => ({ ...prev, [id]: 'send' }));
     try {
       const result = await api.sendInvoice(id);
@@ -1372,7 +1372,7 @@ function InvoiceHistorySection({ invoices, onRefresh }) {
                       </button>
                       <button
                         className="btn btn-sm"
-                        onClick={() => handleSend(inv.id)}
+                        onClick={() => handleSend(inv.id, inv.email)}
                         disabled={loading[inv.id]}
                         title="Send via Email"
                         style={{ padding: '0.375rem 0.5rem', background: '#d1fae5', color: '#059669' }}
