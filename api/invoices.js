@@ -83,8 +83,9 @@ export default async function handler(req, res) {
       const { generateInvoicePDF } = await import('./lib/invoice.js');
       const { sendInvoiceEmail } = await import('./lib/email.js');
       const invoiceNumber = await db.getNextInvoiceNumber();
+      const { additionalEmails, ...invoiceData } = req.body;
       const result = await generateInvoicePDF({
-        ...req.body,
+        ...invoiceData,
         invoiceNumber
       });
 
@@ -92,13 +93,15 @@ export default async function handler(req, res) {
         result.invoice,
         result.firm,
         result.buffer,
-        result.filename
+        result.filename,
+        additionalEmails || []
       );
 
+      const allRecipients = [result.firm.email, ...(additionalEmails || [])];
       return res.status(200).json({
         invoice: result.invoice,
         sent: true,
-        message: `Invoice sent to ${result.firm.email}`
+        message: `Invoice sent to ${allRecipients.join(', ')}`
       });
     }
 

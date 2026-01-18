@@ -2113,8 +2113,54 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState(null); // 'preview', 'pdf', 'docx', 'send'
+  const [additionalEmails, setAdditionalEmails] = useState([]);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
   const { addToast } = useToast();
   const confirm = useConfirm();
+
+  // Get selected firm's email
+  const selectedFirm = formData.firmId ? firms.find(f => f.id === parseInt(formData.firmId)) : null;
+
+  const validateEmail = (email) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
+
+  const handleAddEmail = () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!email) return;
+
+    if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    if (selectedFirm && email === selectedFirm.email.toLowerCase()) {
+      setEmailError('This is already the primary recipient');
+      return;
+    }
+
+    if (additionalEmails.includes(email)) {
+      setEmailError('This email is already added');
+      return;
+    }
+
+    setAdditionalEmails([...additionalEmails, email]);
+    setNewEmail('');
+    setEmailError('');
+  };
+
+  const handleRemoveEmail = (emailToRemove) => {
+    setAdditionalEmails(additionalEmails.filter(e => e !== emailToRemove));
+  };
+
+  const handleEmailKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddEmail();
+    }
+  };
 
   useEffect(() => {
     // Set default due date to 30 days from now
@@ -2182,10 +2228,13 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
       addToast('Please select a law firm', 'error');
       return;
     }
-    const selectedFirm = firms.find(f => f.id === parseInt(formData.firmId));
+    const allRecipients = [selectedFirm?.email, ...additionalEmails].filter(Boolean);
+    const recipientsList = allRecipients.length > 1
+      ? `${selectedFirm?.email} and ${additionalEmails.length} other${additionalEmails.length > 1 ? 's' : ''}`
+      : selectedFirm?.email;
     const confirmed = await confirm({
       title: 'Send Invoice',
-      message: `Generate and send invoice to ${selectedFirm?.firm_name} (${selectedFirm?.email})?`,
+      message: `Generate and send invoice to ${selectedFirm?.firm_name}?\n\nRecipients: ${allRecipients.join(', ')}`,
       confirmText: 'Send',
       cancelText: 'Cancel',
       type: 'info'
@@ -2193,9 +2242,13 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     if (!confirmed) return;
     setLoadingAction('send');
     try {
-      const result = await api.generateAndSendInvoice(formData);
+      const result = await api.generateAndSendInvoice({
+        ...formData,
+        additionalEmails: additionalEmails
+      });
       if (result.error) throw new Error(result.error);
       addToast(result.message, 'success');
+      setAdditionalEmails([]); // Clear additional emails after successful send
       onRefresh();
     } catch (error) {
       addToast(error.message, 'error');
@@ -2272,6 +2325,83 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           />
         </div>
       </div>
+
+      {/* Email Recipients Section */}
+      {selectedFirm && (
+        <div className="email-recipients-section" style={{ marginTop: '1.5rem', padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <label style={{ fontWeight: '600', marginBottom: '0.75rem', display: 'block', color: '#334155' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            Email Recipients
+          </label>
+
+          {/* Primary recipient */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <span className="email-tag email-tag-primary" style={{ background: '#dbeafe', color: '#1e40af', padding: '0.375rem 0.75rem', borderRadius: '20px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              {selectedFirm.email}
+              <span style={{ marginLeft: '0.25rem', background: '#1e40af', color: 'white', padding: '0.125rem 0.375rem', borderRadius: '10px', fontSize: '0.7rem' }}>Primary</span>
+            </span>
+          </div>
+
+          {/* Additional recipients */}
+          {additionalEmails.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              {additionalEmails.map((email, index) => (
+                <span
+                  key={index}
+                  className="email-tag"
+                  style={{ background: '#f1f5f9', color: '#475569', padding: '0.375rem 0.75rem', borderRadius: '20px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                >
+                  {email}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveEmail(email)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', display: 'flex', color: '#94a3b8' }}
+                    title="Remove"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Add email input */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <input
+                type="email"
+                placeholder="Add CC recipient email..."
+                value={newEmail}
+                onChange={e => { setNewEmail(e.target.value); setEmailError(''); }}
+                onKeyDown={handleEmailKeyDown}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: emailError ? '1px solid #ef4444' : '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.875rem' }}
+              />
+              {emailError && <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.25rem', marginBottom: 0 }}>{emailError}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={handleAddEmail}
+              className="btn btn-secondary"
+              style={{ padding: '0.5rem 1rem', whiteSpace: 'nowrap' }}
+            >
+              + Add
+            </button>
+          </div>
+          <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.5rem', marginBottom: 0 }}>
+            Additional recipients will receive a copy of the invoice email
+          </p>
+        </div>
+      )}
 
       <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
         <Tooltip text="Preview invoice amounts before generating">
@@ -2906,13 +3036,13 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                               )}
                             </button>
                           </Tooltip>
-                          <Tooltip text="Save to Google Drive">
+                          <Tooltip text="Open Google Drive to upload invoice">
                             <button
                               className="action-btn action-btn-drive"
                               onClick={() => {
-                                const driveUrl = `https://drive.google.com/drive/u/0/folders`;
+                                const driveUrl = `https://drive.google.com/drive/u/0/my-drive`;
                                 window.open(driveUrl, '_blank');
-                                addToast('Download the PDF first, then upload to Google Drive', 'info');
+                                addToast('Google Drive opened - download the PDF first, then drag & drop to upload', 'info', 5000);
                               }}
                             >
                               <svg width="16" height="14" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">

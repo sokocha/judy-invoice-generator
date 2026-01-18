@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import * as db from './db.js';
 
 // Send invoice email
-export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename) => {
+export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, additionalEmails = []) => {
   const config = await db.getEmailConfig();
 
   if (!config || !config.smtp_host) {
@@ -29,6 +29,7 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename) 
   const mailOptions = {
     from: `"${config.from_name || 'JUDY Legal Research'}" <${config.from_email}>`,
     to: firm.email,
+    cc: additionalEmails.length > 0 ? additionalEmails.join(', ') : undefined,
     subject: `Invoice ${invoice.invoice_number} from JUDY Legal Research`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
