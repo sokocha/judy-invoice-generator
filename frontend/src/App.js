@@ -2239,7 +2239,6 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             <option value="3 months">3 Months</option>
             <option value="6 months">6 Months</option>
             <option value="12 months">12 Months</option>
-            <option value="24 months">24 Months</option>
           </select>
         </div>
         <div className="form-group">
@@ -2499,7 +2498,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               <thead>
                 <tr>
                   <th>Firm</th>
-                  <th>Schedule Date</th>
+                  <th>Scheduled For</th>
                   <th>Plan</th>
                   <th>Duration</th>
                   <th>Amount</th>
@@ -2511,7 +2510,12 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 {scheduled.map(item => (
                   <tr key={item.id}>
                     <td><strong>{item.firm_name}</strong></td>
-                    <td>{formatDate(item.schedule_date)}</td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
+                        <span>{formatDate(item.schedule_date)}</span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>at 8:00 AM GMT</span>
+                      </div>
+                    </td>
                     <td>
                       <span className={`badge ${item.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
                         {item.plan_type === 'plus' ? 'Plus' : 'Standard'}
@@ -2620,7 +2624,6 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 <option value="3 months">3 Months</option>
                 <option value="6 months">6 Months</option>
                 <option value="12 months">12 Months</option>
-                <option value="24 months">24 Months</option>
               </select>
             </div>
             <div className="form-group">
