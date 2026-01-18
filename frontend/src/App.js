@@ -1,7 +1,74 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 // API base URL - empty for same-origin requests on Vercel
 const API_BASE = '';
+
+// Toast notification context
+const ToastContext = React.createContext();
+
+function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+  const toastIdRef = useRef(0);
+
+  const addToast = useCallback((message, type = 'info', duration = 4000) => {
+    const id = toastIdRef.current++;
+    setToasts(prev => [...prev, { id, message, type }]);
+    if (duration > 0) {
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, duration);
+    }
+    return id;
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  return (
+    <ToastContext.Provider value={{ addToast, removeToast }}>
+      {children}
+      <div className="toast-container">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`toast toast-${toast.type}`}>
+            <span className="toast-icon">
+              {toast.type === 'success' && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              )}
+              {toast.type === 'error' && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+              )}
+              {toast.type === 'info' && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="16" x2="12" y2="12"/>
+                  <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+              )}
+            </span>
+            <span className="toast-message">{toast.message}</span>
+            <button className="toast-close" onClick={() => removeToast(toast.id)}>&times;</button>
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
+}
+
+function useToast() {
+  const context = React.useContext(ToastContext);
+  if (!context) {
+    throw new Error('useToast must be used within a ToastProvider');
+  }
+  return context;
+}
 
 // Styles
 const styles = `
@@ -454,6 +521,328 @@ const styles = `
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
+
+  /* Toast Notifications */
+  .toast-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 400px;
+  }
+
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation: slideIn 0.3s ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .toast-success {
+    background: #d1fae5;
+    color: #047857;
+    border-left: 4px solid #059669;
+  }
+
+  .toast-error {
+    background: #fee2e2;
+    color: #dc2626;
+    border-left: 4px solid #dc2626;
+  }
+
+  .toast-info {
+    background: #dbeafe;
+    color: #1e40af;
+    border-left: 4px solid #3b82f6;
+  }
+
+  .toast-icon {
+    display: flex;
+    align-items: center;
+  }
+
+  .toast-message {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .toast-close {
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .toast-close:hover {
+    opacity: 1;
+  }
+
+  /* Loading Skeleton */
+  .skeleton {
+    background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .skeleton-row {
+    display: flex;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .skeleton-cell {
+    height: 1rem;
+    flex: 1;
+  }
+
+  .skeleton-cell.small { flex: 0.5; }
+  .skeleton-cell.medium { flex: 1; }
+  .skeleton-cell.large { flex: 2; }
+
+  /* Success Animation */
+  .success-checkmark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    animation: scaleIn 0.3s ease-out;
+  }
+
+  @keyframes scaleIn {
+    0% { transform: scale(0); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+
+  .success-checkmark svg {
+    color: #059669;
+  }
+
+  /* Search/Filter Input */
+  .search-filter-bar {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .search-input-wrapper {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+  }
+
+  .search-input-wrapper input {
+    width: 100%;
+    padding: 0.625rem 0.875rem 0.625rem 2.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+
+  .search-input-wrapper input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+  }
+
+  .filter-select {
+    padding: 0.625rem 0.875rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background: white;
+    cursor: pointer;
+    min-width: 140px;
+  }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .pagination-btn {
+    padding: 0.5rem 0.875rem;
+    border: 1px solid #e2e8f0;
+    background: white;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #475569;
+  }
+
+  .pagination-btn:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+  }
+
+  .pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .pagination-btn.active {
+    background: #1e40af;
+    color: white;
+    border-color: #1e40af;
+  }
+
+  .pagination-info {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin: 0 0.5rem;
+  }
+
+  /* Action buttons consistent sizing */
+  .action-btn {
+    padding: 0.375rem 0.625rem;
+    min-width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+  }
+
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .action-btn-pdf { background: #fee2e2; color: #dc2626; }
+  .action-btn-pdf:hover:not(:disabled) { background: #fecaca; }
+
+  .action-btn-docx { background: #dbeafe; color: #2563eb; }
+  .action-btn-docx:hover:not(:disabled) { background: #bfdbfe; }
+
+  .action-btn-send { background: #d1fae5; color: #059669; }
+  .action-btn-send:hover:not(:disabled) { background: #a7f3d0; }
+
+  .action-btn-edit { background: #e2e8f0; color: #475569; }
+  .action-btn-edit:hover:not(:disabled) { background: #cbd5e1; }
+
+  .action-btn-delete { background: #fee2e2; color: #dc2626; }
+  .action-btn-delete:hover:not(:disabled) { background: #fecaca; }
+
+  /* Improved Empty State */
+  .empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #64748b;
+  }
+
+  .empty-state-icon {
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+
+  .empty-state-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 0.5rem;
+  }
+
+  .empty-state-description {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin-bottom: 1.5rem;
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .empty-state-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    background: #1e40af;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .empty-state-action:hover {
+    background: #1e3a8a;
+  }
+
+  /* Export button */
+  .export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #059669;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .export-btn:hover {
+    background: #047857;
+  }
 `;
 
 // API Functions - Using query parameters for Vercel Hobby plan compatibility
@@ -561,7 +950,151 @@ function Modal({ isOpen, onClose, title, children }) {
   );
 }
 
-// Alert Component
+// Skeleton Loader Component
+function TableSkeleton({ rows = 5, columns = 6 }) {
+  return (
+    <div className="table-container">
+      {[...Array(rows)].map((_, rowIndex) => (
+        <div key={rowIndex} className="skeleton-row">
+          {[...Array(columns)].map((_, colIndex) => (
+            <div
+              key={colIndex}
+              className={`skeleton skeleton-cell ${colIndex === 0 ? 'large' : colIndex === columns - 1 ? 'small' : 'medium'}`}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Success Checkmark Component
+function SuccessCheckmark() {
+  return (
+    <span className="success-checkmark">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </span>
+  );
+}
+
+// Search Input Component
+function SearchInput({ value, onChange, placeholder = "Search..." }) {
+  return (
+    <div className="search-input-wrapper">
+      <span className="search-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </span>
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+// Pagination Component
+function Pagination({ currentPage, totalPages, onPageChange, totalItems, itemsPerPage }) {
+  if (totalPages <= 1) return null;
+
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
+
+  return (
+    <div className="pagination">
+      <button
+        className="pagination-btn"
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+      >
+        Previous
+      </button>
+
+      {getPageNumbers().map(page => (
+        <button
+          key={page}
+          className={`pagination-btn ${page === currentPage ? 'active' : ''}`}
+          onClick={() => onPageChange(page)}
+        >
+          {page}
+        </button>
+      ))}
+
+      <button
+        className="pagination-btn"
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+      >
+        Next
+      </button>
+
+      <span className="pagination-info">
+        {startItem}-{endItem} of {totalItems}
+      </span>
+    </div>
+  );
+}
+
+// Export to CSV function
+const exportToCSV = (data, filename) => {
+  if (!data || data.length === 0) return;
+
+  const headers = ['Invoice #', 'Firm', 'Plan', 'Duration', 'Users', 'Base Amount', 'GTFL', 'NIHL', 'VAT', 'Total', 'Due Date', 'Status', 'Created'];
+  const rows = data.map(inv => [
+    inv.invoice_number,
+    inv.firm_name,
+    inv.plan_type === 'plus' ? 'Plus' : 'Standard',
+    inv.duration,
+    inv.num_users,
+    inv.base_amount,
+    inv.gtfl,
+    inv.nihl,
+    inv.vat,
+    inv.total,
+    inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '',
+    inv.status,
+    inv.created_at ? new Date(inv.created_at).toLocaleDateString() : ''
+  ]);
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+};
+
+// Alert Component (kept for modal alerts)
 function Alert({ type, message, onClose }) {
   if (!message) return null;
   return (
@@ -573,7 +1106,7 @@ function Alert({ type, message, onClose }) {
 }
 
 // Law Firms Management
-function FirmsSection({ firms, onRefresh }) {
+function FirmsSection({ firms, onRefresh, isLoading }) {
   const [showModal, setShowModal] = useState(false);
   const [editingFirm, setEditingFirm] = useState(null);
   const [formData, setFormData] = useState({
@@ -588,7 +1121,18 @@ function FirmsSection({ firms, onRefresh }) {
     base_price: 0
   });
   const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState({ type: '', message: '' });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [planFilter, setPlanFilter] = useState('all');
+  const { addToast } = useToast();
+
+  // Filter firms based on search and plan filter
+  const filteredFirms = firms.filter(firm => {
+    const matchesSearch = firm.firm_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         firm.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         firm.city.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesPlan = planFilter === 'all' || firm.plan_type === planFilter;
+    return matchesSearch && matchesPlan;
+  });
 
   const handleOpenModal = (firm = null) => {
     if (firm) {
@@ -626,15 +1170,15 @@ function FirmsSection({ firms, onRefresh }) {
     try {
       if (editingFirm) {
         await api.updateFirm(editingFirm.id, formData);
-        setAlert({ type: 'success', message: 'Firm updated successfully!' });
+        addToast('Firm updated successfully!', 'success');
       } else {
         await api.createFirm(formData);
-        setAlert({ type: 'success', message: 'Firm added successfully!' });
+        addToast('Firm added successfully!', 'success');
       }
       setShowModal(false);
       onRefresh();
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(false);
   };
@@ -643,27 +1187,63 @@ function FirmsSection({ firms, onRefresh }) {
     if (!window.confirm('Are you sure you want to delete this firm?')) return;
     try {
       await api.deleteFirm(id);
-      setAlert({ type: 'success', message: 'Firm deleted successfully!' });
+      addToast('Firm deleted successfully!', 'success');
       onRefresh();
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
   };
 
   return (
     <>
-      <Alert type={alert.type} message={alert.message} onClose={() => setAlert({ type: '', message: '' })} />
-      
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Law Firms</h2>
           <button className="btn btn-primary" onClick={() => handleOpenModal()}>+ Add Firm</button>
         </div>
-        
-        {firms.length === 0 ? (
+
+        {/* Search and Filter */}
+        <div className="search-filter-bar">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search firms by name, email, or city..."
+          />
+          <select
+            className="filter-select"
+            value={planFilter}
+            onChange={e => setPlanFilter(e.target.value)}
+          >
+            <option value="all">All Plans</option>
+            <option value="standard">Standard</option>
+            <option value="plus">Plus</option>
+          </select>
+        </div>
+
+        {isLoading ? (
+          <TableSkeleton rows={5} columns={7} />
+        ) : firms.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">📋</div>
-            <p>No law firms added yet. Add your first firm to get started.</p>
+            <div className="empty-state-icon">🏢</div>
+            <div className="empty-state-title">No law firms yet</div>
+            <p className="empty-state-description">
+              Add your first law firm to start generating invoices for them.
+            </p>
+            <button className="empty-state-action" onClick={() => handleOpenModal()}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add First Firm
+            </button>
+          </div>
+        ) : filteredFirms.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">🔍</div>
+            <div className="empty-state-title">No matches found</div>
+            <p className="empty-state-description">
+              Try adjusting your search or filter criteria.
+            </p>
           </div>
         ) : (
           <div className="table-container">
@@ -680,7 +1260,7 @@ function FirmsSection({ firms, onRefresh }) {
                 </tr>
               </thead>
               <tbody>
-                {firms.map(firm => (
+                {filteredFirms.map(firm => (
                   <tr key={firm.id}>
                     <td><strong>{firm.firm_name}</strong></td>
                     <td>{firm.street_address}, {firm.city}</td>
@@ -694,8 +1274,18 @@ function FirmsSection({ firms, onRefresh }) {
                     <td>{formatDate(firm.subscription_end)}</td>
                     <td>
                       <div className="action-buttons">
-                        <button className="btn btn-secondary btn-sm" onClick={() => handleOpenModal(firm)}>Edit</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(firm.id)}>Delete</button>
+                        <button className="action-btn action-btn-edit" onClick={() => handleOpenModal(firm)} title="Edit">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        <button className="action-btn action-btn-delete" onClick={() => handleDelete(firm.id)} title="Delete">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                          </svg>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -815,7 +1405,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   });
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState({ type: '', message: '' });
+  const { addToast } = useToast();
 
   useEffect(() => {
     // Set default due date to 30 days from now
@@ -841,23 +1431,22 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
 
   const handlePreview = async () => {
     if (!formData.firmId) {
-      setAlert({ type: 'error', message: 'Please select a law firm' });
+      addToast('Please select a law firm', 'error');
       return;
     }
     setLoading(true);
     try {
       const data = await api.previewInvoice(formData);
       setPreview(data);
-      setAlert({ type: '', message: '' });
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(false);
   };
 
   const handleDownload = async (format = 'docx') => {
     if (!formData.firmId) {
-      setAlert({ type: 'error', message: 'Please select a law firm' });
+      addToast('Please select a law firm', 'error');
       return;
     }
     setLoading(true);
@@ -871,17 +1460,17 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      setAlert({ type: 'success', message: `Invoice ${invoiceNumber} downloaded as ${format.toUpperCase()}!` });
+      addToast(`Invoice ${invoiceNumber} downloaded as ${format.toUpperCase()}!`, 'success');
       onRefresh();
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(false);
   };
 
   const handleSend = async () => {
     if (!formData.firmId) {
-      setAlert({ type: 'error', message: 'Please select a law firm' });
+      addToast('Please select a law firm', 'error');
       return;
     }
     if (!window.confirm('Send invoice via email to the selected firm?')) return;
@@ -889,10 +1478,10 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     try {
       const result = await api.generateAndSendInvoice(formData);
       if (result.error) throw new Error(result.error);
-      setAlert({ type: 'success', message: result.message });
+      addToast(result.message, 'success');
       onRefresh();
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(false);
   };
@@ -902,8 +1491,6 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
       <div className="card-header">
         <h2 className="card-title">Generate Invoice</h2>
       </div>
-      
-      <Alert type={alert.type} message={alert.message} onClose={() => setAlert({ type: '', message: '' })} />
 
       <div className="form-grid">
         <div className="form-group">
@@ -1072,7 +1659,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   });
   const [loading, setLoading] = useState({});
   const [formLoading, setFormLoading] = useState(false);
-  const [alert, setAlert] = useState({ type: '', message: '' });
+  const { addToast } = useToast();
 
   // Auto-populate from selected firm
   useEffect(() => {
@@ -1092,17 +1679,17 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
 
   const handleCreate = async () => {
     if (!formData.firm_id || !formData.schedule_date) {
-      setAlert({ type: 'error', message: 'Please fill in all required fields' });
+      addToast('Please fill in all required fields', 'error');
       return;
     }
     setFormLoading(true);
     try {
       await api.createScheduled(formData);
-      setAlert({ type: 'success', message: 'Scheduled invoice created!' });
+      addToast('Scheduled invoice created!', 'success');
       setShowModal(false);
       onRefresh();
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setFormLoading(false);
   };
@@ -1112,10 +1699,10 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     setLoading(prev => ({ ...prev, [id]: 'delete' }));
     try {
       await api.deleteScheduled(id);
-      setAlert({ type: 'success', message: 'Scheduled invoice deleted!' });
+      addToast('Scheduled invoice deleted!', 'success');
       onRefresh();
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(prev => ({ ...prev, [id]: null }));
   };
@@ -1126,18 +1713,16 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     try {
       const result = await api.processScheduledSingle(id);
       if (result.error) throw new Error(result.error);
-      setAlert({ type: 'success', message: result.message });
+      addToast(result.message, 'success');
       onRefresh();
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(prev => ({ ...prev, [id]: null }));
   };
 
   return (
     <>
-      <Alert type={alert.type} message={alert.message} onClose={() => setAlert({ type: '', message: '' })} />
-      
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Scheduled Invoices</h2>
@@ -1149,7 +1734,19 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
         {scheduled.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📅</div>
-            <p>No scheduled invoices. Schedule invoices to be automatically generated and sent.</p>
+            <div className="empty-state-title">No scheduled invoices</div>
+            <p className="empty-state-description">
+              Schedule invoices to be automatically generated and sent on specific dates.
+            </p>
+            <button className="empty-state-action" onClick={() => setShowModal(true)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              Schedule First Invoice
+            </button>
           </div>
         ) : (
           <div className="table-container">
@@ -1176,10 +1773,10 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                       </span>
                     </td>
                     <td>{item.duration}</td>
-                    <td>{formatCurrency(item.base_amount * item.num_users)}</td>
+                    <td>{formatCurrency(item.base_amount)}</td>
                     <td>
                       <span className={`badge ${
-                        item.status === 'pending' ? 'badge-yellow' : 
+                        item.status === 'pending' ? 'badge-yellow' :
                         item.status === 'executed' ? 'badge-green' : 'badge-red'
                       }`}>
                         {item.status}
@@ -1189,28 +1786,26 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                       {item.status === 'pending' && (
                         <div className="action-buttons">
                           <button
-                            className="btn btn-sm"
+                            className="action-btn action-btn-send"
                             onClick={() => handleProcessNow(item.id, item.email)}
                             disabled={loading[item.id]}
                             title="Process & Send Now"
-                            style={{ padding: '0.375rem 0.5rem', background: '#d1fae5', color: '#059669' }}
                           >
                             {loading[item.id] === 'process' ? '...' : (
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <line x1="22" y1="2" x2="11" y2="13"/>
                                 <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                               </svg>
                             )}
                           </button>
                           <button
-                            className="btn btn-sm"
+                            className="action-btn action-btn-delete"
                             onClick={() => handleDelete(item.id)}
                             disabled={loading[item.id]}
                             title="Cancel"
-                            style={{ padding: '0.375rem 0.5rem', background: '#fee2e2', color: '#dc2626' }}
                           >
                             {loading[item.id] === 'delete' ? '...' : (
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <line x1="18" y1="6" x2="6" y2="18"/>
                                 <line x1="6" y1="6" x2="18" y2="18"/>
                               </svg>
@@ -1229,7 +1824,14 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Schedule Invoice">
         <div className="modal-body">
-          <Alert type="info" message="Invoice will be generated and emailed on the scheduled date." />
+          <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.5rem' }}>
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="16" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            Invoice will be generated and emailed on the scheduled date.
+          </div>
           <div className="form-grid">
             <div className="form-group">
               <label>Law Firm *</label>
@@ -1307,9 +1909,35 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
 }
 
 // Invoice History Section
-function InvoiceHistorySection({ invoices, onRefresh }) {
+function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavigateToGenerate }) {
   const [loading, setLoading] = useState({});
-  const [alert, setAlert] = useState({ type: '', message: '' });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [planFilter, setPlanFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const { addToast } = useToast();
+
+  // Filter invoices
+  const filteredInvoices = invoices.filter(inv => {
+    const matchesSearch = inv.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         inv.firm_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || inv.status === statusFilter;
+    const matchesPlan = planFilter === 'all' || inv.plan_type === planFilter;
+    return matchesSearch && matchesStatus && matchesPlan;
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredInvoices.length / itemsPerPage);
+  const paginatedInvoices = filteredInvoices.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, planFilter]);
 
   const handleDownload = async (id, invoiceNumber, format) => {
     setLoading(prev => ({ ...prev, [`${id}-${format}`]: true }));
@@ -1323,8 +1951,9 @@ function InvoiceHistorySection({ invoices, onRefresh }) {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      addToast(`Downloaded ${invoiceNumber}.${format}`, 'success');
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(prev => ({ ...prev, [`${id}-${format}`]: false }));
   };
@@ -1335,114 +1964,188 @@ function InvoiceHistorySection({ invoices, onRefresh }) {
     try {
       const result = await api.sendInvoice(id);
       if (result.error) throw new Error(result.error);
-      setAlert({ type: 'success', message: result.message });
+      addToast(result.message, 'success');
       onRefresh();
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(prev => ({ ...prev, [id]: null }));
+  };
+
+  const handleExportCSV = () => {
+    exportToCSV(filteredInvoices, 'invoices');
+    addToast('Invoice history exported to CSV', 'success');
   };
 
   return (
     <div className="card">
       <div className="card-header">
         <h2 className="card-title">Invoice History</h2>
+        {showFilters && invoices.length > 0 && (
+          <button className="export-btn" onClick={handleExportCSV}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export CSV
+          </button>
+        )}
       </div>
 
-      <Alert type={alert.type} message={alert.message} onClose={() => setAlert({ type: '', message: '' })} />
+      {/* Search and Filters */}
+      {showFilters && invoices.length > 0 && (
+        <div className="search-filter-bar">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search by invoice # or firm name..."
+          />
+          <select
+            className="filter-select"
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+          </select>
+          <select
+            className="filter-select"
+            value={planFilter}
+            onChange={e => setPlanFilter(e.target.value)}
+          >
+            <option value="all">All Plans</option>
+            <option value="standard">Standard</option>
+            <option value="plus">Plus</option>
+          </select>
+        </div>
+      )}
 
       {invoices.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">📄</div>
-          <p>No invoices generated yet. Create your first invoice above.</p>
+          <div className="empty-state-title">No invoices yet</div>
+          <p className="empty-state-description">
+            Generate your first invoice to see it appear here.
+          </p>
+          {onNavigateToGenerate && (
+            <button className="empty-state-action" onClick={onNavigateToGenerate}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <line x1="9" y1="15" x2="15" y2="15"/>
+              </svg>
+              Create First Invoice
+            </button>
+          )}
+        </div>
+      ) : filteredInvoices.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">🔍</div>
+          <div className="empty-state-title">No matches found</div>
+          <p className="empty-state-description">
+            Try adjusting your search or filter criteria.
+          </p>
         </div>
       ) : (
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Invoice #</th>
-                <th>Firm</th>
-                <th>Plan</th>
-                <th>Total</th>
-                <th>Due Date</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map(inv => (
-                <tr key={inv.id}>
-                  <td><strong>{inv.invoice_number}</strong></td>
-                  <td>{inv.firm_name}</td>
-                  <td>
-                    <span className={`badge ${inv.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
-                      {inv.plan_type === 'plus' ? 'Plus' : 'Standard'}
-                    </span>
-                  </td>
-                  <td>{formatCurrency(inv.total)}</td>
-                  <td>{formatDate(inv.due_date)}</td>
-                  <td>
-                    <span className={`badge ${inv.status === 'sent' ? 'badge-green' : 'badge-yellow'}`}>
-                      {inv.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="action-buttons">
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => handleDownload(inv.id, inv.invoice_number, 'pdf')}
-                        disabled={loading[`${inv.id}-pdf`]}
-                        title="Download PDF"
-                        style={{ padding: '0.375rem 0.5rem', background: '#fee2e2', color: '#dc2626' }}
-                      >
-                        {loading[`${inv.id}-pdf`] ? '...' : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                            <path d="M9 15h6"/>
-                            <path d="M12 18v-6"/>
-                          </svg>
-                        )}
-                      </button>
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => handleDownload(inv.id, inv.invoice_number, 'docx')}
-                        disabled={loading[`${inv.id}-docx`]}
-                        title="Download DOCX"
-                        style={{ padding: '0.375rem 0.5rem', background: '#dbeafe', color: '#2563eb' }}
-                      >
-                        {loading[`${inv.id}-docx`] ? '...' : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                            <line x1="16" y1="13" x2="8" y2="13"/>
-                            <line x1="16" y1="17" x2="8" y2="17"/>
-                            <line x1="10" y1="9" x2="8" y2="9"/>
-                          </svg>
-                        )}
-                      </button>
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => handleSend(inv.id, inv.email)}
-                        disabled={loading[inv.id]}
-                        title="Send via Email"
-                        style={{ padding: '0.375rem 0.5rem', background: '#d1fae5', color: '#059669' }}
-                      >
-                        {loading[inv.id] === 'send' ? '...' : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
-                            <line x1="22" y1="2" x2="11" y2="13"/>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </td>
+        <>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Invoice #</th>
+                  <th>Firm</th>
+                  <th>Plan</th>
+                  <th>Total</th>
+                  <th>Due Date</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {paginatedInvoices.map(inv => (
+                  <tr key={inv.id}>
+                    <td><strong>{inv.invoice_number}</strong></td>
+                    <td>{inv.firm_name}</td>
+                    <td>
+                      <span className={`badge ${inv.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
+                        {inv.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                      </span>
+                    </td>
+                    <td>{formatCurrency(inv.total)}</td>
+                    <td>{formatDate(inv.due_date)}</td>
+                    <td>
+                      <span className={`badge ${inv.status === 'sent' ? 'badge-green' : 'badge-yellow'}`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="action-buttons">
+                        <button
+                          className="action-btn action-btn-pdf"
+                          onClick={() => handleDownload(inv.id, inv.invoice_number, 'pdf')}
+                          disabled={loading[`${inv.id}-pdf`]}
+                          title="Download PDF"
+                        >
+                          {loading[`${inv.id}-pdf`] ? '...' : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                              <path d="M9 15h6"/>
+                              <path d="M12 18v-6"/>
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          className="action-btn action-btn-docx"
+                          onClick={() => handleDownload(inv.id, inv.invoice_number, 'docx')}
+                          disabled={loading[`${inv.id}-docx`]}
+                          title="Download DOCX"
+                        >
+                          {loading[`${inv.id}-docx`] ? '...' : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                              <line x1="16" y1="13" x2="8" y2="13"/>
+                              <line x1="16" y1="17" x2="8" y2="17"/>
+                              <line x1="10" y1="9" x2="8" y2="9"/>
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          className="action-btn action-btn-send"
+                          onClick={() => handleSend(inv.id, inv.email)}
+                          disabled={loading[inv.id]}
+                          title="Send via Email"
+                        >
+                          {loading[inv.id] === 'send' ? '...' : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="22" y1="2" x2="11" y2="13"/>
+                              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {showFilters && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              totalItems={filteredInvoices.length}
+              itemsPerPage={itemsPerPage}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -1459,8 +2162,8 @@ function SettingsSection() {
     from_name: 'JUDY Legal Research'
   });
   const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState({ type: '', message: '' });
   const [schedulerRunning, setSchedulerRunning] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
     loadConfig();
@@ -1489,9 +2192,9 @@ function SettingsSection() {
     setLoading(true);
     try {
       await api.updateEmailConfig(config);
-      setAlert({ type: 'success', message: 'Email settings saved!' });
+      addToast('Email settings saved!', 'success');
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(false);
   };
@@ -1500,9 +2203,9 @@ function SettingsSection() {
     setLoading(true);
     try {
       const result = await api.verifyEmailConfig();
-      setAlert({ type: result.configured ? 'success' : 'error', message: result.message });
+      addToast(result.message, result.configured ? 'success' : 'error');
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(false);
   };
@@ -1513,21 +2216,20 @@ function SettingsSection() {
       if (schedulerRunning) {
         await api.stopScheduler();
         setSchedulerRunning(false);
-        setAlert({ type: 'info', message: 'Scheduler stopped' });
+        addToast('Scheduler stopped', 'info');
       } else {
         await api.startScheduler();
         setSchedulerRunning(true);
-        setAlert({ type: 'success', message: 'Scheduler started' });
+        addToast('Scheduler started', 'success');
       }
     } catch (error) {
-      setAlert({ type: 'error', message: error.message });
+      addToast(error.message, 'error');
     }
     setLoading(false);
   };
 
   return (
     <>
-      <Alert type={alert.type} message={alert.message} onClose={() => setAlert({ type: '', message: '' })} />
       
       <div className="card">
         <div className="card-header">
@@ -1625,8 +2327,8 @@ function SettingsSection() {
   );
 }
 
-// Main App Component
-function App() {
+// Main App Component (inner)
+function AppContent() {
   const [activeTab, setActiveTab] = useState('generate');
   const [firms, setFirms] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -1657,7 +2359,7 @@ function App() {
   return (
     <div className="app">
       <style>{styles}</style>
-      
+
       <header className="header">
         <div className="header-content">
           <div className="logo" onClick={() => setActiveTab('generate')} style={{ cursor: 'pointer' }}>
@@ -1668,31 +2370,31 @@ function App() {
             </div>
           </div>
           <nav className="nav">
-            <button 
+            <button
               className={`nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
               onClick={() => setActiveTab('generate')}
             >
               Generate
             </button>
-            <button 
+            <button
               className={`nav-btn ${activeTab === 'firms' ? 'active' : ''}`}
               onClick={() => setActiveTab('firms')}
             >
               Law Firms
             </button>
-            <button 
+            <button
               className={`nav-btn ${activeTab === 'scheduled' ? 'active' : ''}`}
               onClick={() => setActiveTab('scheduled')}
             >
               Scheduled
             </button>
-            <button 
+            <button
               className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`}
               onClick={() => setActiveTab('history')}
             >
               History
             </button>
-            <button 
+            <button
               className={`nav-btn ${activeTab === 'settings' ? 'active' : ''}`}
               onClick={() => setActiveTab('settings')}
             >
@@ -1734,17 +2436,21 @@ function App() {
             {activeTab === 'generate' && (
               <>
                 <GenerateInvoiceSection firms={firms} onRefresh={loadData} />
-                <InvoiceHistorySection invoices={invoices.slice(0, 5)} onRefresh={loadData} />
+                <InvoiceHistorySection invoices={invoices.slice(0, 5)} onRefresh={loadData} showFilters={false} />
               </>
             )}
             {activeTab === 'firms' && (
-              <FirmsSection firms={firms} onRefresh={loadData} />
+              <FirmsSection firms={firms} onRefresh={loadData} isLoading={loading} />
             )}
             {activeTab === 'scheduled' && (
               <ScheduledSection firms={firms} scheduled={scheduled} onRefresh={loadData} />
             )}
             {activeTab === 'history' && (
-              <InvoiceHistorySection invoices={invoices} onRefresh={loadData} />
+              <InvoiceHistorySection
+                invoices={invoices}
+                onRefresh={loadData}
+                onNavigateToGenerate={() => setActiveTab('generate')}
+              />
             )}
             {activeTab === 'settings' && (
               <SettingsSection />
@@ -1753,6 +2459,15 @@ function App() {
         )}
       </main>
     </div>
+  );
+}
+
+// Main App with ToastProvider wrapper
+function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 }
 
