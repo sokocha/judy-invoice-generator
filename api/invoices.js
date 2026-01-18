@@ -45,16 +45,28 @@ export default async function handler(req, res) {
       return res.status(200).json(preview);
     }
 
-    // POST /api/invoices?action=generate
+    // POST /api/invoices?action=generate&format=pdf|docx
     if (req.method === 'POST' && action === 'generate') {
-      const { generateInvoice } = await import('./lib/invoice.js');
+      const format = req.query.format || 'docx';
       const invoiceNumber = await db.getNextInvoiceNumber();
-      const result = await generateInvoice({
-        ...req.body,
-        invoiceNumber
-      });
 
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      let result;
+      if (format === 'pdf') {
+        const { generateInvoicePDF } = await import('./lib/invoice.js');
+        result = await generateInvoicePDF({
+          ...req.body,
+          invoiceNumber
+        });
+        res.setHeader('Content-Type', 'application/pdf');
+      } else {
+        const { generateInvoice } = await import('./lib/invoice.js');
+        result = await generateInvoice({
+          ...req.body,
+          invoiceNumber
+        });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      }
+
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
       res.setHeader('X-Invoice-Number', result.invoice.invoice_number);
       res.setHeader('X-Invoice-Id', result.invoice.id);
@@ -62,12 +74,12 @@ export default async function handler(req, res) {
       return res.send(result.buffer);
     }
 
-    // POST /api/invoices?action=generate-and-send
+    // POST /api/invoices?action=generate-and-send (always sends PDF)
     if (req.method === 'POST' && action === 'generate-and-send') {
-      const { generateInvoice } = await import('./lib/invoice.js');
+      const { generateInvoicePDF } = await import('./lib/invoice.js');
       const { sendInvoiceEmail } = await import('./lib/email.js');
       const invoiceNumber = await db.getNextInvoiceNumber();
-      const result = await generateInvoice({
+      const result = await generateInvoicePDF({
         ...req.body,
         invoiceNumber
       });
