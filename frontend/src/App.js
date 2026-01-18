@@ -481,8 +481,8 @@ const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  generateInvoice: async (data) => {
-    const response = await fetch(`${API_BASE}/api/invoices?action=generate`, {
+  generateInvoice: async (data, format = 'docx') => {
+    const response = await fetch(`${API_BASE}/api/invoices?action=generate&format=${format}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -490,7 +490,7 @@ const api = {
     if (!response.ok) throw new Error('Failed to generate invoice');
     const blob = await response.blob();
     const invoiceNumber = response.headers.get('X-Invoice-Number');
-    return { blob, invoiceNumber };
+    return { blob, invoiceNumber, format };
   },
   generateAndSendInvoice: (data) => fetch(`${API_BASE}/api/invoices?action=generate-and-send`, {
     method: 'POST',
@@ -854,23 +854,23 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     setLoading(false);
   };
 
-  const handleDownload = async () => {
+  const handleDownload = async (format = 'docx') => {
     if (!formData.firmId) {
       setAlert({ type: 'error', message: 'Please select a law firm' });
       return;
     }
     setLoading(true);
     try {
-      const { blob, invoiceNumber } = await api.generateInvoice(formData);
+      const { blob, invoiceNumber } = await api.generateInvoice(formData, format);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Invoice_${invoiceNumber}.docx`;
+      a.download = `Invoice_${invoiceNumber}.${format}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      setAlert({ type: 'success', message: `Invoice ${invoiceNumber} downloaded successfully!` });
+      setAlert({ type: 'success', message: `Invoice ${invoiceNumber} downloaded as ${format.toUpperCase()}!` });
       onRefresh();
     } catch (error) {
       setAlert({ type: 'error', message: error.message });
@@ -969,15 +969,18 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
         </div>
       </div>
 
-      <div style={{ marginTop: '1rem' }}>
-        <button className="btn btn-secondary" onClick={handlePreview} disabled={loading} style={{ marginRight: '0.5rem' }}>
+      <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <button className="btn btn-secondary" onClick={handlePreview} disabled={loading}>
           Preview
         </button>
-        <button className="btn btn-primary" onClick={handleDownload} disabled={loading} style={{ marginRight: '0.5rem' }}>
-          {loading ? 'Processing...' : 'Generate & Download'}
+        <button className="btn btn-primary" onClick={() => handleDownload('pdf')} disabled={loading}>
+          {loading ? 'Processing...' : 'Download PDF'}
+        </button>
+        <button className="btn btn-secondary" onClick={() => handleDownload('docx')} disabled={loading}>
+          {loading ? 'Processing...' : 'Download DOCX'}
         </button>
         <button className="btn btn-success" onClick={handleSend} disabled={loading}>
-          {loading ? 'Processing...' : 'Generate & Send Email'}
+          {loading ? 'Processing...' : 'Generate & Send (PDF)'}
         </button>
       </div>
 
