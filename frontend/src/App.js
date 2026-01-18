@@ -2732,6 +2732,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               <label>Schedule Date *</label>
               <input
                 type="date"
+                min={new Date().toISOString().split('T')[0]}
                 value={formData.schedule_date}
                 onChange={e => setFormData({ ...formData, schedule_date: e.target.value })}
               />
