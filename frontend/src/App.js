@@ -5808,7 +5808,7 @@ function AppContent() {
               onClick={() => setActiveTab('dashboard')}
             >
               Dashboard
-              {(overdueCount + expiringCount) > 0 && <span className="nav-badge nav-badge-danger">{overdueCount + expiringCount}</span>}
+              {(overdueCount + expiringCount) > 0 && <span className={`nav-badge ${overdueCount > 0 ? 'nav-badge-danger' : 'nav-badge-warning'}`}>{overdueCount + expiringCount}</span>}
             </button>
             <button
               className={`nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
