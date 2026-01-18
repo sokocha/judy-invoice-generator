@@ -1,4 +1,3 @@
-import { get } from '@vercel/blob';
 import createReport from 'docx-templates';
 import * as db from './db.js';
 

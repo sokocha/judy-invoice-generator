@@ -1,5 +1,3 @@
-import * as db from './lib/db.js';
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -12,6 +10,9 @@ export default async function handler(req, res) {
   const { action, id } = req.query;
 
   try {
+    // Dynamic import db to catch any errors
+    const db = await import('./lib/db.js');
+
     // GET /api/scheduled - List all scheduled invoices
     if (req.method === 'GET' && !action) {
       const scheduled = await db.getAllScheduledInvoices();
@@ -39,11 +40,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Scheduled invoices API error:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message, stack: error.stack });
   }
 }
 
 async function processScheduledInvoices() {
+  const db = await import('./lib/db.js');
   const { generateInvoice } = await import('./lib/invoice.js');
   const { sendInvoiceEmail } = await import('./lib/email.js');
 
