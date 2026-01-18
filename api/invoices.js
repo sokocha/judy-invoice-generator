@@ -26,16 +26,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ invoiceNumber });
     }
 
-    // GET /api/invoices?action=download&id=123
+    // GET /api/invoices?action=download&id=123&format=pdf|docx
     if (req.method === 'GET' && action === 'download' && id) {
       const invoice = await db.getInvoiceById(id);
       if (!invoice) {
         return res.status(404).json({ error: 'Invoice not found' });
       }
-      return res.status(404).json({
-        error: 'Invoice file not available. Please regenerate the invoice.',
-        invoice
-      });
+
+      const format = req.query.format || 'pdf';
+      const { regenerateInvoice } = await import('./lib/invoice.js');
+      const result = await regenerateInvoice(invoice, format);
+
+      res.setHeader('Content-Type', result.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      return res.send(result.buffer);
     }
 
     // POST /api/invoices?action=preview

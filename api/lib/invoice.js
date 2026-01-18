@@ -162,6 +162,105 @@ export const getInvoicePreview = async (invoiceData) => {
   };
 };
 
+// Regenerate invoice document from existing invoice record (for downloads)
+export const regenerateInvoice = async (invoiceRecord, format = 'pdf') => {
+  // Get firm details
+  const firm = await db.getFirmById(invoiceRecord.firm_id);
+  if (!firm) {
+    throw new Error('Law firm not found');
+  }
+
+  // Determine template file prefix from Vercel Blob
+  const templatePrefix = invoiceRecord.plan_type === 'plus'
+    ? 'Plus_Template_Polished'
+    : 'Standard_Template_Polished';
+
+  // Find template in Vercel Blob by prefix
+  let template;
+  try {
+    const listResult = await list({ prefix: templatePrefix });
+    if (!listResult.blobs || listResult.blobs.length === 0) {
+      throw new Error(`No blobs found with prefix: ${templatePrefix}`);
+    }
+    const blobUrl = listResult.blobs[0].url;
+    const response = await fetch(blobUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch template from ${blobUrl}: ${response.status}`);
+    }
+    template = Buffer.from(await response.arrayBuffer());
+  } catch (error) {
+    throw new Error(`Template load failed: ${error.message}`);
+  }
+
+  // Prepare data for template
+  const templateData = {
+    INVOICE_NUMBER: invoiceRecord.invoice_number,
+    DUE_DATE: formatDate(invoiceRecord.due_date),
+    NAME_ADDRESS: `${firm.firm_name}\n${firm.street_address}\n${firm.city}, Ghana`,
+    FIRM_NAME: firm.firm_name,
+    STREET_ADDRESS: firm.street_address,
+    CITY: `${firm.city}, Ghana`,
+    DURATION: invoiceRecord.duration,
+    USERS: invoiceRecord.num_users.toString(),
+    BASE: formatAmount(invoiceRecord.base_amount),
+    SUBTOTAL: formatAmount(invoiceRecord.subtotal),
+    GTFL: formatAmount(invoiceRecord.gtfl),
+    NIHL: formatAmount(invoiceRecord.nihl),
+    VAT: formatAmount(invoiceRecord.vat),
+    TOTAL: formatAmount(invoiceRecord.total)
+  };
+
+  // Generate document
+  const result = await createReport({
+    template,
+    data: templateData,
+    cmdDelimiter: ['{{', '}}'],
+    processLineBreaks: true
+  });
+  const docxBuffer = Buffer.from(result);
+
+  const baseFilename = `Invoice_${invoiceRecord.invoice_number}_${firm.firm_name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  if (format === 'docx') {
+    return {
+      buffer: docxBuffer,
+      filename: `${baseFilename}.docx`,
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    };
+  }
+
+  // Convert to PDF
+  const cloudmersiveApiKey = process.env.CLOUDMERSIVE_API_KEY;
+  if (!cloudmersiveApiKey) {
+    throw new Error('CLOUDMERSIVE_API_KEY not set');
+  }
+
+  const formData = new FormData();
+  const docxBlob = new Blob([docxBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  });
+  formData.append('inputFile', docxBlob, 'invoice.docx');
+
+  const pdfResponse = await fetch('https://api.cloudmersive.com/convert/docx/to/pdf', {
+    method: 'POST',
+    headers: { 'Apikey': cloudmersiveApiKey },
+    body: formData
+  });
+
+  if (!pdfResponse.ok) {
+    const errorText = await pdfResponse.text();
+    throw new Error(`PDF conversion failed: ${pdfResponse.status} - ${errorText}`);
+  }
+
+  const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+
+  return {
+    buffer: pdfBuffer,
+    filename: `${baseFilename}.pdf`,
+    contentType: 'application/pdf'
+  };
+};
+
 // Generate PDF invoice using Cloudmersive (800 free calls/month, no expiration)
 export const generateInvoicePDF = async (invoiceData) => {
   // First generate the DOCX
