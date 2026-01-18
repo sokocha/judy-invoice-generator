@@ -83,13 +83,16 @@ export const generateInvoice = async (invoiceData) => {
     throw new Error(`Template load failed: ${error.message}`);
   }
 
-  // Prepare data for template
-  const nameAddress = `${firm.firm_name}\n${firm.street_address}\n${firm.city}`;
+  // Prepare data for template - each line separate for proper formatting
+  const nameAddress = `${firm.firm_name}\n${firm.street_address}\n${firm.city}, Ghana`;
 
   const templateData = {
     INVOICE_NUMBER: invoiceNumber,
     DUE_DATE: formatDate(dueDate),
     NAME_ADDRESS: nameAddress,
+    FIRM_NAME: firm.firm_name,
+    STREET_ADDRESS: firm.street_address,
+    CITY: `${firm.city}, Ghana`,
     DURATION: duration,
     USERS: numUsers.toString(),
     BASE: formatAmount(baseAmount),
