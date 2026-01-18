@@ -27,13 +27,13 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
   });
 
   const mailOptions = {
-    from: `"${config.from_name || 'JUDY Legal Research'}" <${config.from_email}>`,
+    from: `"${config.from_name || 'JUDY'}" <${config.from_email}>`,
     to: firm.email,
     cc: additionalEmails.length > 0 ? additionalEmails.join(', ') : undefined,
-    subject: `Invoice ${invoice.invoice_number} from JUDY Legal Research`,
+    subject: `Invoice ${invoice.invoice_number} from JUDY`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #9C27B0;">Invoice from JUDY Legal Research</h2>
+        <h2 style="color: #9C27B0;">Invoice from JUDY</h2>
 
         <p>Dear ${firm.firm_name},</p>
 
@@ -76,7 +76,7 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
 
         <p>If you have any questions about this invoice, please don't hesitate to contact us.</p>
 
-        <p>Thank you for choosing JUDY Legal Research!</p>
+        <p>Thank you for choosing JUDY!</p>
 
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
 
