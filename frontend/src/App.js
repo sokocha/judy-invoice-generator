@@ -1601,7 +1601,7 @@ function App() {
       
       <header className="header">
         <div className="header-content">
-          <div className="logo">
+          <div className="logo" onClick={() => setActiveTab('generate')} style={{ cursor: 'pointer' }}>
             <div className="logo-icon">J</div>
             <div>
               <h1>JUDY</h1>
