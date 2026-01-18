@@ -164,6 +164,45 @@ export default async function handler(req, res) {
       });
     }
 
+    // POST /api/invoices?action=email-accountant - Email paid invoices CSV to accountant
+    if (req.method === 'POST' && action === 'email-accountant') {
+      const { sendAccountantReport } = await import('./lib/email.js');
+
+      // Get all paid invoices
+      const allInvoices = await db.getAllInvoices();
+      const paidInvoices = allInvoices.filter(inv => inv.status === 'paid');
+
+      if (paidInvoices.length === 0) {
+        return res.status(400).json({ error: 'No paid invoices to export' });
+      }
+
+      // Generate CSV content
+      const headers = ['Invoice #', 'Firm', 'Plan', 'Duration', 'Users', 'Base Amount', 'GTFL', 'NIHL', 'VAT', 'Total', 'Due Date', 'Status', 'Created'];
+      const rows = paidInvoices.map(inv => [
+        inv.invoice_number,
+        inv.firm_name,
+        inv.plan_type === 'plus' ? 'Plus' : 'Standard',
+        inv.duration,
+        inv.num_users,
+        inv.base_amount,
+        inv.gtfl,
+        inv.nihl,
+        inv.vat,
+        inv.total,
+        inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '',
+        inv.status,
+        inv.created_at ? new Date(inv.created_at).toLocaleDateString() : ''
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n');
+
+      const result = await sendAccountantReport(csvContent, paidInvoices.length);
+      return res.status(200).json(result);
+    }
+
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Invoices API error:', error);

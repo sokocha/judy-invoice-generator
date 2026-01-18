@@ -142,3 +142,80 @@ export const verifyEmailConfig = async () => {
     return { configured: false, message: `Verification failed: ${error.message}` };
   }
 };
+
+// Send CSV report to accountant
+export const sendAccountantReport = async (csvContent, invoiceCount) => {
+  const config = await db.getEmailConfig();
+
+  if (!config || !config.smtp_host) {
+    throw new Error('Email is not configured. Please configure SMTP settings first.');
+  }
+
+  if (!config.accountant_email) {
+    throw new Error('Accountant email is not configured. Please add an accountant email in Settings.');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: config.smtp_host,
+    port: config.smtp_port || 587,
+    secure: config.smtp_port === 465,
+    auth: {
+      user: config.smtp_user,
+      pass: config.smtp_pass
+    }
+  });
+
+  const today = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const filename = `paid_invoices_${new Date().toISOString().split('T')[0]}.csv`;
+
+  const mailOptions = {
+    from: `"${config.from_name || 'JUDY'}" <${config.from_email}>`,
+    to: config.accountant_email,
+    subject: `JUDY Paid Invoices Report - ${today}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #9C27B0;">Paid Invoices Report</h2>
+
+        <p>Hello,</p>
+
+        <p>Please find attached the paid invoices report from JUDY.</p>
+
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;"><strong>Report Date:</strong></td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;">${today}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;"><strong>Total Paid Invoices:</strong></td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;">${invoiceCount}</td>
+          </tr>
+        </table>
+
+        <p>This report contains all invoices that have been marked as paid.</p>
+
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+
+        <p style="color: #718096; font-size: 12px;">
+          JUDY INNOVATIVE TECH LTD<br/>
+          19 Banana Street, East Legon<br/>
+          Accra, Ghana
+        </p>
+      </div>
+    `,
+    attachments: [
+      {
+        filename,
+        content: csvContent,
+        contentType: 'text/csv'
+      }
+    ]
+  };
+
+  const result = await transporter.sendMail(mailOptions);
+  return { success: true, message: `Report sent to ${config.accountant_email}`, messageId: result.messageId };
+};

@@ -145,6 +145,13 @@ function ToastProvider({ children }) {
                   <line x1="12" y1="8" x2="12.01" y2="8"/>
                 </svg>
               )}
+              {toast.type === 'warning' && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              )}
             </span>
             <span className="toast-message">{toast.message}</span>
             <button className="toast-close" onClick={() => removeToast(toast.id)}>&times;</button>
@@ -861,6 +868,12 @@ const styles = `
     background: #dbeafe;
     color: #1e40af;
     border-left: 4px solid #3b82f6;
+  }
+
+  .toast-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border-left: 4px solid #f59e0b;
   }
 
   .toast-icon {
@@ -1713,6 +1726,7 @@ const api = {
     if (!response.ok) throw new Error('Failed to download invoice');
     return response.blob();
   },
+  emailAccountant: () => fetch(`${API_BASE}/api/invoices?action=email-accountant`, { method: 'POST' }).then(r => r.json()),
 
   // Scheduled
   getScheduled: () => fetch(`${API_BASE}/api/scheduled`).then(r => r.json()),
@@ -3788,16 +3802,31 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setShowExportMenu(false);
   };
 
-  const handleExportForAccountant = () => {
+  const [sendingToAccountant, setSendingToAccountant] = useState(false);
+
+  const handleExportForAccountant = async () => {
     const paidInvoices = invoices.filter(inv => inv.status === 'paid');
     if (paidInvoices.length === 0) {
       addToast('No paid invoices to export', 'warning');
       setShowExportMenu(false);
       return;
     }
-    exportToCSV(paidInvoices, 'paid_invoices_accounting');
-    addToast(`Exported ${paidInvoices.length} paid invoice(s) for accounting`, 'success');
+
+    setSendingToAccountant(true);
     setShowExportMenu(false);
+
+    try {
+      const result = await api.emailAccountant();
+      if (result.error) {
+        addToast(result.error, 'error');
+      } else {
+        addToast(result.message || `Sent ${paidInvoices.length} paid invoice(s) to accountant`, 'success');
+      }
+    } catch (error) {
+      addToast(error.message || 'Failed to send report', 'error');
+    }
+
+    setSendingToAccountant(false);
   };
 
   const handleMarkPaid = async (id, invoiceNumber) => {
@@ -3863,11 +3892,20 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               {isDeleting ? 'Deleting...' : `Delete (${selectedInvoices.size})`}
             </button>
           )}
+          {sendingToAccountant && (
+            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+              Sending to accountant...
+            </span>
+          )}
           {showFilters && invoices.length > 0 && (
             <div className="export-dropdown" ref={exportMenuRef}>
               <button
                 className="export-btn"
                 onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={sendingToAccountant}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -3894,15 +3932,14 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                       <span className="export-menu-desc">Export {filteredInvoices.length} filtered invoice(s)</span>
                     </div>
                   </button>
-                  <button className="export-menu-item" onClick={handleExportForAccountant}>
+                  <button className="export-menu-item" onClick={handleExportForAccountant} disabled={sendingToAccountant}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                      <line x1="8" y1="21" x2="16" y2="21"/>
-                      <line x1="12" y1="17" x2="12" y2="21"/>
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                      <polyline points="22,6 12,13 2,6"/>
                     </svg>
                     <div className="export-menu-text">
-                      <span className="export-menu-title">Accounting Export</span>
-                      <span className="export-menu-desc">Paid invoices only ({invoices.filter(i => i.status === 'paid').length})</span>
+                      <span className="export-menu-title">Email to Accountant</span>
+                      <span className="export-menu-desc">Send paid invoices CSV ({invoices.filter(i => i.status === 'paid').length})</span>
                     </div>
                   </button>
                 </div>
