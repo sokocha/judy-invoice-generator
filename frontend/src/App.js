@@ -2627,7 +2627,6 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   });
   const [bulkFormData, setBulkFormData] = useState({
     schedule_date: '',
-    plan_type: 'standard',
     duration: '12 months',
     selectedFirms: []
   });
@@ -2763,7 +2762,6 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   const openBulkModal = () => {
     setBulkFormData({
       schedule_date: '',
-      plan_type: 'standard',
       duration: '12 months',
       selectedFirms: firms.map(f => f.id)
     });
@@ -2833,7 +2831,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
         await api.createScheduled({
           firm_id: firmId,
           schedule_date: bulkFormData.schedule_date,
-          plan_type: bulkFormData.plan_type,
+          plan_type: firm.plan_type || 'standard',
           duration: bulkFormData.duration,
           num_users: firm.num_users || 1,
           base_amount: firm.base_price || 0
@@ -3141,7 +3139,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               <line x1="12" y1="16" x2="12" y2="12"/>
               <line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
-            Schedule invoices for multiple firms at once. Each firm's user count and base price will be used.
+            Schedule invoices for multiple firms at once. Each firm's plan type, user count, and base price will be used.
           </div>
 
           <div className="form-grid" style={{ marginBottom: '1rem' }}>
@@ -3153,16 +3151,6 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 onChange={e => setBulkFormData({ ...bulkFormData, schedule_date: e.target.value })}
               />
               {bulkFormData.schedule_date && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(bulkFormData.schedule_date)}</small>}
-            </div>
-            <div className="form-group">
-              <label>Plan Type</label>
-              <select
-                value={bulkFormData.plan_type}
-                onChange={e => setBulkFormData({ ...bulkFormData, plan_type: e.target.value })}
-              >
-                <option value="standard">Standard Plan</option>
-                <option value="plus">Plus Plan</option>
-              </select>
             </div>
             <div className="form-group">
               <label>Duration</label>
@@ -3215,7 +3203,12 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                       style={{ marginRight: '0.75rem' }}
                     />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500 }}>{firm.firm_name}</div>
+                      <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {firm.firm_name}
+                        <span className={`badge ${firm.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`} style={{ fontSize: '0.65rem' }}>
+                          {firm.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                        </span>
+                      </div>
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
                         {firm.email} • {firm.num_users || 1} user(s) • {formatCurrency(firm.base_price || 0)}
                       </div>
