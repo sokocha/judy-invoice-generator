@@ -33,7 +33,7 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
     subject: `Invoice ${invoice.invoice_number} from JUDY Legal Research`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #2c5282;">Invoice from JUDY Legal Research</h2>
+        <h2 style="color: #9C27B0;">Invoice from JUDY Legal Research</h2>
 
         <p>Dear ${firm.firm_name},</p>
 
@@ -58,7 +58,7 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
           </tr>
           <tr>
             <td style="padding: 10px; border: 1px solid #e2e8f0;"><strong>Total Amount:</strong></td>
-            <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #2c5282;">GHS ${total}</td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #9C27B0;">GHS ${total}</td>
           </tr>
         </table>
 
