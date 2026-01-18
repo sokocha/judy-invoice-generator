@@ -19,15 +19,17 @@ export const formatDate = (dateStr) => {
 };
 
 // Calculate invoice amounts
-export const calculateAmounts = (baseAmount, numUsers) => {
-  const subtotal = baseAmount * numUsers;
-  const gtfl = subtotal * 0.025;  // 2.5%
-  const nihl = subtotal * 0.025;  // 2.5%
-  const vat = subtotal * 0.15;    // 15%
-  const total = subtotal + gtfl + nihl + vat;
+// GTFL, NIHL, VAT are calculated as percentages of BASE
+// TOTAL = BASE + GTFL + NIHL + VAT
+export const calculateAmounts = (baseAmount) => {
+  const base = baseAmount;
+  const gtfl = base * 0.025;  // 2.5% of base
+  const nihl = base * 0.025;  // 2.5% of base
+  const vat = base * 0.15;    // 15% of base
+  const total = base + gtfl + nihl + vat;
 
   return {
-    subtotal: Math.round(subtotal * 100) / 100,
+    subtotal: Math.round(base * 100) / 100,
     gtfl: Math.round(gtfl * 100) / 100,
     nihl: Math.round(nihl * 100) / 100,
     vat: Math.round(vat * 100) / 100,
@@ -54,7 +56,7 @@ export const generateInvoice = async (invoiceData) => {
   }
 
   // Calculate amounts
-  const amounts = calculateAmounts(baseAmount, numUsers);
+  const amounts = calculateAmounts(baseAmount);
 
   // Determine template file prefix from Vercel Blob
   const templatePrefix = planType === 'plus'
@@ -147,7 +149,7 @@ export const getInvoicePreview = async (invoiceData) => {
     throw new Error('Law firm not found');
   }
 
-  const amounts = calculateAmounts(baseAmount, numUsers);
+  const amounts = calculateAmounts(baseAmount);
   const invoiceNumber = await db.getNextInvoiceNumber();
 
   return {
