@@ -1,6 +1,4 @@
 import * as db from './lib/db.js';
-import { generateInvoice, getInvoicePreview } from './lib/invoice.js';
-import { sendInvoiceEmail } from './lib/email.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -41,12 +39,14 @@ export default async function handler(req, res) {
 
     // POST /api/invoices?action=preview
     if (req.method === 'POST' && action === 'preview') {
+      const { getInvoicePreview } = await import('./lib/invoice.js');
       const preview = await getInvoicePreview(req.body);
       return res.status(200).json(preview);
     }
 
     // POST /api/invoices?action=generate
     if (req.method === 'POST' && action === 'generate') {
+      const { generateInvoice } = await import('./lib/invoice.js');
       const invoiceNumber = await db.getNextInvoiceNumber();
       const result = await generateInvoice({
         ...req.body,
@@ -63,6 +63,8 @@ export default async function handler(req, res) {
 
     // POST /api/invoices?action=generate-and-send
     if (req.method === 'POST' && action === 'generate-and-send') {
+      const { generateInvoice } = await import('./lib/invoice.js');
+      const { sendInvoiceEmail } = await import('./lib/email.js');
       const invoiceNumber = await db.getNextInvoiceNumber();
       const result = await generateInvoice({
         ...req.body,

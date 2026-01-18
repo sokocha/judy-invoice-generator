@@ -1,6 +1,4 @@
 import * as db from './lib/db.js';
-import { generateInvoice } from './lib/invoice.js';
-import { sendInvoiceEmail } from './lib/email.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -46,6 +44,9 @@ export default async function handler(req, res) {
 }
 
 async function processScheduledInvoices() {
+  const { generateInvoice } = await import('./lib/invoice.js');
+  const { sendInvoiceEmail } = await import('./lib/email.js');
+
   const pending = await db.getPendingScheduledInvoices();
   const results = { processed: 0, errors: [] };
 
