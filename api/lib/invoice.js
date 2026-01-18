@@ -1,4 +1,5 @@
 import createReport from 'docx-templates';
+import { list } from '@vercel/blob';
 import * as db from './db.js';
 
 // Format number with commas and 2 decimal places
@@ -54,19 +55,22 @@ export const generateInvoice = async (invoiceData) => {
   // Calculate amounts
   const amounts = calculateAmounts(baseAmount, numUsers);
 
-  // Determine template file from Vercel Blob
-  const templateFileName = planType === 'plus'
-    ? 'Plus_Template_Polished.docx'
-    : 'Standard_Template_Polished.docx';
+  // Determine template file prefix from Vercel Blob
+  const templatePrefix = planType === 'plus'
+    ? 'Plus_Template_Polished'
+    : 'Standard_Template_Polished';
 
-  // Get template from Vercel Blob
-  const blobUrl = `${process.env.BLOB_BASE_URL}/${templateFileName}`;
-
+  // Find template in Vercel Blob by prefix
   let template;
   try {
+    const { blobs } = await list({ prefix: templatePrefix });
+    if (!blobs || blobs.length === 0) {
+      throw new Error(`Template not found: ${templatePrefix}`);
+    }
+    const blobUrl = blobs[0].url;
     const response = await fetch(blobUrl);
     if (!response.ok) {
-      throw new Error(`Template not found: ${templateFileName}`);
+      throw new Error(`Failed to fetch template: ${templatePrefix}`);
     }
     template = Buffer.from(await response.arrayBuffer());
   } catch (error) {
