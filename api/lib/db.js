@@ -102,6 +102,17 @@ export async function updateInvoiceStatus(id, status, sentAt = null) {
   }
 }
 
+export async function deleteInvoice(id) {
+  await sql`DELETE FROM invoices WHERE id = ${id}`;
+  return { success: true };
+}
+
+export async function deleteInvoices(ids) {
+  if (!ids || ids.length === 0) return { success: true, count: 0 };
+  await sql`DELETE FROM invoices WHERE id = ANY(${ids})`;
+  return { success: true, count: ids.length };
+}
+
 export async function getNextInvoiceNumber() {
   const year = new Date().getFullYear();
   const prefix = `JUDY-${year}-`;

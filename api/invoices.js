@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Expose-Headers', 'X-Invoice-Number, X-Invoice-Id');
 
@@ -139,6 +139,29 @@ export default async function handler(req, res) {
       // Revert to sent status (since it was sent before being marked paid)
       await db.updateInvoiceStatus(id, 'sent');
       return res.status(200).json({ success: true, message: 'Invoice marked as unpaid' });
+    }
+
+    // DELETE /api/invoices?id=123 - Delete single invoice
+    if (req.method === 'DELETE' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      await db.deleteInvoice(id);
+      return res.status(200).json({ success: true, message: 'Invoice deleted' });
+    }
+
+    // POST /api/invoices?action=delete-bulk - Delete multiple invoices
+    if (req.method === 'POST' && action === 'delete-bulk') {
+      const { ids } = req.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'No invoice IDs provided' });
+      }
+      const result = await db.deleteInvoices(ids);
+      return res.status(200).json({
+        success: true,
+        message: `${result.count} invoice(s) deleted`
+      });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });

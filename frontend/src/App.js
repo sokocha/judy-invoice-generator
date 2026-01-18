@@ -1072,6 +1072,34 @@ const styles = `
   .action-btn-unpaid { background: #fef3c7; color: #b45309; }
   .action-btn-unpaid:hover:not(:disabled) { background: #fde68a; }
 
+  /* Selected Row */
+  .selected-row {
+    background-color: #eff6ff !important;
+  }
+  .selected-row:hover {
+    background-color: #dbeafe !important;
+  }
+
+  /* Delete Button */
+  .btn-danger {
+    padding: 0.5rem 1rem;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #b91c1c;
+  }
+  .btn-danger:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
   /* Improved Empty State */
   .empty-state {
     text-align: center;
@@ -1611,6 +1639,12 @@ const api = {
   sendInvoice: (id) => fetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoicePaid: (id) => fetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoiceUnpaid: (id) => fetch(`${API_BASE}/api/invoices?action=mark-unpaid&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  deleteInvoice: (id) => fetch(`${API_BASE}/api/invoices?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
+  deleteInvoices: (ids) => fetch(`${API_BASE}/api/invoices?action=delete-bulk`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  }).then(r => r.json()),
   downloadInvoice: async (id, format = 'pdf') => {
     const response = await fetch(`${API_BASE}/api/invoices?action=download&id=${id}&format=${format}`);
     if (!response.ok) throw new Error('Failed to download invoice');
@@ -3553,6 +3587,8 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   const [statusFilter, setStatusFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedInvoices, setSelectedInvoices] = useState(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
   const itemsPerPage = 10;
   const { addToast } = useToast();
   const confirm = useConfirm();
@@ -3577,6 +3613,57 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, planFilter]);
+
+  // Clear selection when filters change
+  useEffect(() => {
+    setSelectedInvoices(new Set());
+  }, [searchTerm, statusFilter, planFilter]);
+
+  // Selection handlers
+  const toggleSelectInvoice = (id) => {
+    setSelectedInvoices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedInvoices.size === filteredInvoices.length) {
+      setSelectedInvoices(new Set());
+    } else {
+      setSelectedInvoices(new Set(filteredInvoices.map(inv => inv.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedInvoices.size === 0) return;
+
+    const confirmed = await confirm({
+      title: 'Delete Invoices',
+      message: `Are you sure you want to delete ${selectedInvoices.size} invoice(s)? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      type: 'danger'
+    });
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await api.deleteInvoices(Array.from(selectedInvoices));
+      if (result.error) throw new Error(result.error);
+      addToast(result.message, 'success');
+      setSelectedInvoices(new Set());
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setIsDeleting(false);
+  };
 
   const handleDownload = async (id, invoiceNumber, format) => {
     setLoading(prev => ({ ...prev, [`${id}-${format}`]: true }));
@@ -3669,16 +3756,34 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     <div className="card">
       <div className="card-header">
         <h2 className="card-title">Invoice History</h2>
-        {showFilters && invoices.length > 0 && (
-          <button className="export-btn" onClick={handleExportCSV}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Export CSV
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {selectedInvoices.size > 0 && (
+            <button
+              className="btn-danger"
+              onClick={handleDeleteSelected}
+              disabled={isDeleting}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+              {isDeleting ? 'Deleting...' : `Delete (${selectedInvoices.size})`}
+            </button>
+          )}
+          {showFilters && invoices.length > 0 && (
+            <button className="export-btn" onClick={handleExportCSV}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export CSV
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -3744,6 +3849,14 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: '40px' }}>
+                    <input
+                      type="checkbox"
+                      checked={filteredInvoices.length > 0 && selectedInvoices.size === filteredInvoices.length}
+                      onChange={toggleSelectAll}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
                   <th>Invoice #</th>
                   <th>Firm</th>
                   <th>Plan</th>
@@ -3758,7 +3871,15 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                 {paginatedInvoices.map(inv => {
                   const dueDateStatus = getDueDateStatus(inv.due_date);
                   return (
-                    <tr key={inv.id}>
+                    <tr key={inv.id} className={selectedInvoices.has(inv.id) ? 'selected-row' : ''}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedInvoices.has(inv.id)}
+                          onChange={() => toggleSelectInvoice(inv.id)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </td>
                       <td><strong>{inv.invoice_number}</strong></td>
                       <td>{inv.firm_name}</td>
                       <td>
