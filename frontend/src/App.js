@@ -863,6 +863,9 @@ const styles = `
   .action-btn-send { background: #d1fae5; color: #059669; }
   .action-btn-send:hover:not(:disabled) { background: #a7f3d0; }
 
+  .action-btn-drive { background: #fef3c7; color: #d97706; }
+  .action-btn-drive:hover:not(:disabled) { background: #fde68a; }
+
   .action-btn-edit { background: #e2e8f0; color: #475569; }
   .action-btn-edit:hover:not(:disabled) { background: #cbd5e1; }
 
@@ -2818,6 +2821,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                   <th>Invoice #</th>
                   <th>Firm</th>
                   <th>Plan</th>
+                  <th>Users</th>
                   <th>Total</th>
                   <th>Due Date</th>
                   <th>Status</th>
@@ -2836,6 +2840,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                           {inv.plan_type === 'plus' ? 'Plus' : 'Standard'}
                         </span>
                       </td>
+                      <td>{inv.num_users}</td>
                       <td>{formatCurrency(inv.total)}</td>
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -2899,6 +2904,22 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                                   <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                                 </svg>
                               )}
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Save to Google Drive">
+                            <button
+                              className="action-btn action-btn-drive"
+                              onClick={() => {
+                                const driveUrl = `https://drive.google.com/drive/u/0/folders`;
+                                window.open(driveUrl, '_blank');
+                                addToast('Download the PDF first, then upload to Google Drive', 'info');
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 2L4.5 12.5l3.5 6h8l3.5-6L12 2z"/>
+                                <path d="M4.5 12.5h15"/>
+                                <path d="M8 18.5l4-6"/>
+                              </svg>
                             </button>
                           </Tooltip>
                         </div>
