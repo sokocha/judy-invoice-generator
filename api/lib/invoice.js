@@ -63,18 +63,23 @@ export const generateInvoice = async (invoiceData) => {
   // Find template in Vercel Blob by prefix
   let template;
   try {
-    const { blobs } = await list({ prefix: templatePrefix });
-    if (!blobs || blobs.length === 0) {
-      throw new Error(`Template not found: ${templatePrefix}`);
+    console.log(`Looking for template with prefix: ${templatePrefix}`);
+    const listResult = await list({ prefix: templatePrefix });
+    console.log(`Blob list result:`, JSON.stringify(listResult, null, 2));
+
+    if (!listResult.blobs || listResult.blobs.length === 0) {
+      throw new Error(`No blobs found with prefix: ${templatePrefix}`);
     }
-    const blobUrl = blobs[0].url;
+    const blobUrl = listResult.blobs[0].url;
+    console.log(`Fetching template from: ${blobUrl}`);
     const response = await fetch(blobUrl);
     if (!response.ok) {
-      throw new Error(`Failed to fetch template: ${templatePrefix}`);
+      throw new Error(`Failed to fetch template from ${blobUrl}: ${response.status}`);
     }
     template = Buffer.from(await response.arrayBuffer());
+    console.log(`Template loaded, size: ${template.length} bytes`);
   } catch (error) {
-    throw new Error(`Failed to load template: ${error.message}`);
+    throw new Error(`Template load failed: ${error.message}`);
   }
 
   // Prepare data for template
