@@ -170,6 +170,80 @@ function useToast() {
   return context;
 }
 
+// Authentication Context
+const AuthContext = createContext();
+
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('judy_token'));
+  const [loading, setLoading] = useState(true);
+
+  // Check if user is logged in on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const storedToken = localStorage.getItem('judy_token');
+      if (storedToken) {
+        try {
+          const response = await fetch(`${API_BASE}/api/auth?action=me`, {
+            headers: { 'Authorization': `Bearer ${storedToken}` }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setUser(data.user);
+            setToken(storedToken);
+          } else {
+            // Token invalid, clear it
+            localStorage.removeItem('judy_token');
+            setToken(null);
+          }
+        } catch (error) {
+          console.error('Auth check failed:', error);
+          localStorage.removeItem('judy_token');
+          setToken(null);
+        }
+      }
+      setLoading(false);
+    };
+    checkAuth();
+  }, []);
+
+  const login = async (email, password) => {
+    const response = await fetch(`${API_BASE}/api/auth?action=login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await response.json();
+    if (response.ok) {
+      localStorage.setItem('judy_token', data.token);
+      setToken(data.token);
+      setUser(data.user);
+      return { success: true };
+    }
+    return { success: false, error: data.error };
+  };
+
+  const logout = () => {
+    localStorage.removeItem('judy_token');
+    setToken(null);
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, token, loading, login, logout, isAuthenticated: !!token }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
+
 // Styles
 const styles = `
   * {
@@ -259,7 +333,40 @@ const styles = `
     background: white;
     color: #1e40af;
   }
-  
+
+  .nav-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    margin: 0.5rem 0;
+  }
+
+  .nav-user {
+    padding-top: 0.5rem;
+  }
+
+  .nav-user-email {
+    display: block;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.7);
+    padding: 0 0.75rem;
+    margin-bottom: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .nav-logout {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: rgba(255,255,255,0.9);
+  }
+
+  .nav-logout:hover {
+    background: rgba(220, 38, 38, 0.3) !important;
+  }
+
   .main {
     max-width: 1400px;
     margin: 0 auto;
@@ -1669,35 +1776,214 @@ const styles = `
       display: none;
     }
   }
+
+  /* Login Page Styles */
+  .login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 1rem;
+  }
+
+  .login-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+  }
+
+  .login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .login-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    background: #f3e8ff;
+    border-radius: 50%;
+    margin-bottom: 1rem;
+  }
+
+  .login-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1a202c;
+    margin-bottom: 0.5rem;
+  }
+
+  .login-subtitle {
+    color: #718096;
+    font-size: 0.95rem;
+  }
+
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .login-error {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #fee2e2;
+    color: #dc2626;
+    border-radius: 8px;
+    font-size: 0.875rem;
+  }
+
+  .login-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.875rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 0.5rem;
+  }
+
+  .login-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+
+  .login-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .login-footer {
+    margin-top: 2rem;
+    text-align: center;
+    color: #a0aec0;
+    font-size: 0.875rem;
+  }
+
+  /* User menu in sidebar */
+  .user-menu {
+    padding: 1rem;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin-top: auto;
+  }
+
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .user-details {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .user-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .user-email {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem;
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.9);
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .logout-btn:hover {
+    background: rgba(255,255,255,0.2);
+  }
 `;
 
 // API Functions - Using query parameters for Vercel Hobby plan compatibility
+// Helper to get auth headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('judy_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+const authFetch = (url, options = {}) => {
+  const headers = {
+    ...options.headers,
+    ...getAuthHeaders()
+  };
+  return fetch(url, { ...options, headers });
+};
+
 const api = {
   // Firms
-  getFirms: () => fetch(`${API_BASE}/api/firms`).then(r => r.json()),
-  getFirm: (id) => fetch(`${API_BASE}/api/firms?id=${id}`).then(r => r.json()),
-  createFirm: (data) => fetch(`${API_BASE}/api/firms`, {
+  getFirms: () => authFetch(`${API_BASE}/api/firms`).then(r => r.json()),
+  getFirm: (id) => authFetch(`${API_BASE}/api/firms?id=${id}`).then(r => r.json()),
+  createFirm: (data) => authFetch(`${API_BASE}/api/firms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  updateFirm: (id, data) => fetch(`${API_BASE}/api/firms?id=${id}`, {
+  updateFirm: (id, data) => authFetch(`${API_BASE}/api/firms?id=${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  deleteFirm: (id) => fetch(`${API_BASE}/api/firms?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
+  deleteFirm: (id) => authFetch(`${API_BASE}/api/firms?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
 
   // Invoices
-  getInvoices: () => fetch(`${API_BASE}/api/invoices`).then(r => r.json()),
-  getNextInvoiceNumber: () => fetch(`${API_BASE}/api/invoices?action=next-number`).then(r => r.json()),
-  previewInvoice: (data) => fetch(`${API_BASE}/api/invoices?action=preview`, {
+  getInvoices: () => authFetch(`${API_BASE}/api/invoices`).then(r => r.json()),
+  getNextInvoiceNumber: () => authFetch(`${API_BASE}/api/invoices?action=next-number`).then(r => r.json()),
+  previewInvoice: (data) => authFetch(`${API_BASE}/api/invoices?action=preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
   generateInvoice: async (data, format = 'docx') => {
-    const response = await fetch(`${API_BASE}/api/invoices?action=generate&format=${format}`, {
+    const response = await authFetch(`${API_BASE}/api/invoices?action=generate&format=${format}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -1707,52 +1993,52 @@ const api = {
     const invoiceNumber = response.headers.get('X-Invoice-Number');
     return { blob, invoiceNumber, format };
   },
-  generateAndSendInvoice: (data) => fetch(`${API_BASE}/api/invoices?action=generate-and-send`, {
+  generateAndSendInvoice: (data) => authFetch(`${API_BASE}/api/invoices?action=generate-and-send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  sendInvoice: (id) => fetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
-  markInvoicePaid: (id) => fetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, { method: 'POST' }).then(r => r.json()),
-  markInvoiceUnpaid: (id) => fetch(`${API_BASE}/api/invoices?action=mark-unpaid&id=${id}`, { method: 'POST' }).then(r => r.json()),
-  deleteInvoice: (id) => fetch(`${API_BASE}/api/invoices?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
-  deleteInvoices: (ids) => fetch(`${API_BASE}/api/invoices?action=delete-bulk`, {
+  sendInvoice: (id) => authFetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoicePaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoiceUnpaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-unpaid&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  deleteInvoice: (id) => authFetch(`${API_BASE}/api/invoices?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
+  deleteInvoices: (ids) => authFetch(`${API_BASE}/api/invoices?action=delete-bulk`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids })
   }).then(r => r.json()),
   downloadInvoice: async (id, format = 'pdf') => {
-    const response = await fetch(`${API_BASE}/api/invoices?action=download&id=${id}&format=${format}`);
+    const response = await authFetch(`${API_BASE}/api/invoices?action=download&id=${id}&format=${format}`);
     if (!response.ok) throw new Error('Failed to download invoice');
     return response.blob();
   },
-  emailAccountant: () => fetch(`${API_BASE}/api/invoices?action=email-accountant`, { method: 'POST' }).then(r => r.json()),
+  emailAccountant: () => authFetch(`${API_BASE}/api/invoices?action=email-accountant`, { method: 'POST' }).then(r => r.json()),
 
   // Scheduled
-  getScheduled: () => fetch(`${API_BASE}/api/scheduled`).then(r => r.json()),
-  createScheduled: (data) => fetch(`${API_BASE}/api/scheduled`, {
+  getScheduled: () => authFetch(`${API_BASE}/api/scheduled`).then(r => r.json()),
+  createScheduled: (data) => authFetch(`${API_BASE}/api/scheduled`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  deleteScheduled: (id) => fetch(`${API_BASE}/api/scheduled?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
-  clearCompletedScheduled: () => fetch(`${API_BASE}/api/scheduled?action=clear-completed`, { method: 'DELETE' }).then(r => r.json()),
-  processScheduled: () => fetch(`${API_BASE}/api/scheduled?action=process`, { method: 'POST' }).then(r => r.json()),
-  processScheduledSingle: (id) => fetch(`${API_BASE}/api/scheduled?action=process&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  deleteScheduled: (id) => authFetch(`${API_BASE}/api/scheduled?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
+  clearCompletedScheduled: () => authFetch(`${API_BASE}/api/scheduled?action=clear-completed`, { method: 'DELETE' }).then(r => r.json()),
+  processScheduled: () => authFetch(`${API_BASE}/api/scheduled?action=process`, { method: 'POST' }).then(r => r.json()),
+  processScheduledSingle: (id) => authFetch(`${API_BASE}/api/scheduled?action=process&id=${id}`, { method: 'POST' }).then(r => r.json()),
 
   // Email Config
-  getEmailConfig: () => fetch(`${API_BASE}/api/email-config`).then(r => r.json()),
-  updateEmailConfig: (data) => fetch(`${API_BASE}/api/email-config`, {
+  getEmailConfig: () => authFetch(`${API_BASE}/api/email-config`).then(r => r.json()),
+  updateEmailConfig: (data) => authFetch(`${API_BASE}/api/email-config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json()),
-  verifyEmailConfig: () => fetch(`${API_BASE}/api/email-config?action=verify`).then(r => r.json()),
+  verifyEmailConfig: () => authFetch(`${API_BASE}/api/email-config?action=verify`).then(r => r.json()),
 
   // Scheduler
-  getSchedulerStatus: () => fetch(`${API_BASE}/api/scheduler`).then(r => r.json()),
-  startScheduler: () => fetch(`${API_BASE}/api/scheduler?action=start`, { method: 'POST' }).then(r => r.json()),
-  stopScheduler: () => fetch(`${API_BASE}/api/scheduler?action=stop`, { method: 'POST' }).then(r => r.json()),
+  getSchedulerStatus: () => authFetch(`${API_BASE}/api/scheduler`).then(r => r.json()),
+  startScheduler: () => authFetch(`${API_BASE}/api/scheduler?action=start`, { method: 'POST' }).then(r => r.json()),
+  stopScheduler: () => authFetch(`${API_BASE}/api/scheduler?action=stop`, { method: 'POST' }).then(r => r.json()),
 };
 
 // Format currency
@@ -4178,6 +4464,101 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   );
 }
 
+// Login Page
+function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    const result = await login(email, password);
+
+    if (!result.success) {
+      setError(result.error || 'Login failed');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="login-container">
+      <div className="login-card">
+        <div className="login-header">
+          <div className="login-logo">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9C27B0" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+          </div>
+          <h1 className="login-title">JUDY Invoice</h1>
+          <p className="login-subtitle">Sign in to manage invoices</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="login-form">
+          {error && (
+            <div className="login-error">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+              {error}
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email"
+              required
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                Signing in...
+              </>
+            ) : (
+              'Sign In'
+            )}
+          </button>
+        </form>
+
+        <div className="login-footer">
+          <p>JUDY Invoice Generator</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Dashboard Section
 function DashboardSection({ firms, invoices, scheduled, onNavigate }) {
   // Exchange rate (approximate - in production this would be fetched from an API)
@@ -4663,6 +5044,7 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { addToast } = useToast();
+  const { user, logout } = useAuth();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -4791,6 +5173,18 @@ function AppContent() {
             >
               Settings
             </button>
+            <div className="nav-divider"></div>
+            <div className="nav-user">
+              <span className="nav-user-email">{user?.email}</span>
+              <button className="nav-btn nav-logout" onClick={logout}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                Sign Out
+              </button>
+            </div>
           </nav>
         </div>
       </header>
@@ -4841,14 +5235,38 @@ function AppContent() {
   );
 }
 
-// Main App with ToastProvider and ConfirmProvider wrappers
+// Auth-aware App Content
+function AuthenticatedApp() {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="login-container">
+        <div className="loading">
+          <div className="spinner"></div>
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  return <AppContent />;
+}
+
+// Main App with providers
 function App() {
   return (
-    <ToastProvider>
-      <ConfirmProvider>
-        <AppContent />
-      </ConfirmProvider>
-    </ToastProvider>
+    <AuthProvider>
+      <ToastProvider>
+        <ConfirmProvider>
+          <AuthenticatedApp />
+        </ConfirmProvider>
+      </ToastProvider>
+    </AuthProvider>
   );
 }
 

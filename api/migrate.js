@@ -1,9 +1,10 @@
 import { neon } from '@neondatabase/serverless';
+import { authenticate } from './lib/auth.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -11,6 +12,13 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Authenticate request (skip for initial setup when no users exist)
+  const auth = await authenticate(req);
+  // Only allow unauthenticated access if checking for initial setup
+  if (auth.error && req.query.action !== 'setup') {
+    return res.status(auth.status).json({ error: auth.error });
   }
 
   try {
@@ -86,6 +94,24 @@ export default async function handler(req, res) {
       END $$
     `;
     migrations.push('accountant_email');
+
+    // Create users table if it doesn't exist
+    await sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    migrations.push('users_table');
+
+    // Create index on users email
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)
+    `;
+    migrations.push('idx_users_email');
 
     return res.status(200).json({
       success: true,

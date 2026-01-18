@@ -1,11 +1,19 @@
+import { authenticate } from './lib/auth.js';
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Expose-Headers', 'X-Invoice-Number, X-Invoice-Id');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Authenticate request
+  const auth = await authenticate(req);
+  if (auth.error) {
+    return res.status(auth.status).json({ error: auth.error });
   }
 
   const { action, id } = req.query;

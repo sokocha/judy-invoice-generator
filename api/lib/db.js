@@ -225,3 +225,27 @@ export async function updateEmailConfig(config) {
       accountant_email = ${config.accountant_email || null}
   `;
 }
+
+// Users
+export async function getUserByEmail(email) {
+  const rows = await sql`
+    SELECT * FROM users WHERE email = ${email.toLowerCase()}
+  `;
+  return rows[0] || null;
+}
+
+export async function getUserById(id) {
+  const rows = await sql`
+    SELECT id, email, name, created_at FROM users WHERE id = ${id}
+  `;
+  return rows[0] || null;
+}
+
+export async function createUser(user) {
+  const rows = await sql`
+    INSERT INTO users (email, password_hash, name)
+    VALUES (${user.email.toLowerCase()}, ${user.password_hash}, ${user.name || null})
+    RETURNING id, email, name, created_at
+  `;
+  return rows[0];
+}
