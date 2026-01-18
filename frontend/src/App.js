@@ -1366,6 +1366,7 @@ const api = {
     body: JSON.stringify(data)
   }).then(r => r.json()),
   deleteScheduled: (id) => fetch(`${API_BASE}/api/scheduled?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
+  clearCompletedScheduled: () => fetch(`${API_BASE}/api/scheduled?action=clear-completed`, { method: 'DELETE' }).then(r => r.json()),
   processScheduled: () => fetch(`${API_BASE}/api/scheduled?action=process`, { method: 'POST' }).then(r => r.json()),
   processScheduledSingle: (id) => fetch(`${API_BASE}/api/scheduled?action=process&id=${id}`, { method: 'POST' }).then(r => r.json()),
 
@@ -2613,8 +2614,35 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   });
   const [loading, setLoading] = useState({});
   const [formLoading, setFormLoading] = useState(false);
+  const [clearingCompleted, setClearingCompleted] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const { addToast } = useToast();
   const confirm = useConfirm();
+
+  // Filter scheduled invoices
+  const filteredScheduled = scheduled.filter(item => {
+    const matchesSearch = item.firm_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredScheduled.length / itemsPerPage);
+  const paginatedScheduled = filteredScheduled.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
+
+  // Count completed (executed + failed)
+  const completedCount = scheduled.filter(s => s.status === 'executed' || s.status === 'failed').length;
 
   // Auto-populate from selected firm (but don't overwrite schedule_date if already set)
   useEffect(() => {
@@ -2690,15 +2718,77 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     setLoading(prev => ({ ...prev, [id]: null }));
   };
 
+  const handleClearCompleted = async () => {
+    const confirmed = await confirm({
+      title: 'Clear Completed Invoices',
+      message: `Remove ${completedCount} executed and failed scheduled invoices from the list? This cannot be undone.`,
+      confirmText: 'Clear All',
+      cancelText: 'Cancel',
+      type: 'warning'
+    });
+    if (!confirmed) return;
+    setClearingCompleted(true);
+    try {
+      const result = await api.clearCompletedScheduled();
+      if (result.error) throw new Error(result.error);
+      addToast(`Cleared ${result.count} completed invoice${result.count !== 1 ? 's' : ''}`, 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setClearingCompleted(false);
+  };
+
   return (
     <>
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Scheduled Invoices</h2>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-            + Schedule Invoice
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {completedCount > 0 && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleClearCompleted}
+                disabled={clearingCompleted}
+                style={{ fontSize: '0.875rem' }}
+              >
+                {clearingCompleted ? 'Clearing...' : `Clear Completed (${completedCount})`}
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+              + Schedule Invoice
+            </button>
+          </div>
         </div>
+
+        {/* Search and Filter */}
+        {scheduled.length > 0 && (
+          <div className="filters" style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div className="search-box" style={{ flex: '1', minWidth: '200px' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }}>
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by firm name..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                style={{ paddingLeft: '2.5rem', width: '100%' }}
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              style={{ minWidth: '140px' }}
+            >
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="executed">Executed</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+        )}
 
         {scheduled.length === 0 ? (
           <div className="empty-state">
@@ -2717,6 +2807,14 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               Schedule First Invoice
             </button>
           </div>
+        ) : filteredScheduled.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">🔍</div>
+            <div className="empty-state-title">No matching scheduled invoices</div>
+            <p className="empty-state-description">
+              Try adjusting your search or filter criteria.
+            </p>
+          </div>
         ) : (
           <div className="table-container">
             <table>
@@ -2733,7 +2831,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 </tr>
               </thead>
               <tbody>
-                {scheduled.map(item => (
+                {paginatedScheduled.map(item => (
                   <tr key={item.id}>
                     <td><strong>{item.firm_name}</strong></td>
                     <td>
@@ -2797,6 +2895,17 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Pagination */}
+        {filteredScheduled.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            totalItems={filteredScheduled.length}
+            itemsPerPage={itemsPerPage}
+          />
         )}
       </div>
 

@@ -179,6 +179,11 @@ export async function deleteScheduledInvoice(id) {
   return { success: true };
 }
 
+export async function deleteExecutedScheduledInvoices() {
+  const result = await sql`DELETE FROM scheduled_invoices WHERE status IN ('executed', 'failed') RETURNING id`;
+  return { success: true, count: result.length };
+}
+
 // Email Config
 export async function getEmailConfig() {
   const rows = await sql`SELECT * FROM email_config WHERE id = 1`;

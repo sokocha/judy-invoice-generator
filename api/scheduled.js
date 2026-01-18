@@ -31,6 +31,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // DELETE /api/scheduled?action=clear-completed - Clear executed/failed invoices
+    if (req.method === 'DELETE' && action === 'clear-completed') {
+      const result = await db.deleteExecutedScheduledInvoices();
+      return res.status(200).json(result);
+    }
+
     // POST /api/scheduled?action=process - Process all pending
     if (req.method === 'POST' && action === 'process' && !id) {
       const results = await processScheduledInvoices();
