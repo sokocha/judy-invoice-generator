@@ -195,20 +195,22 @@ export async function getEmailConfig() {
     smtp_user: '',
     smtp_pass: '',
     from_email: '',
-    from_name: 'JUDY Legal Research'
+    from_name: 'JUDY Legal Research',
+    accountant_email: ''
   };
 }
 
 export async function updateEmailConfig(config) {
   await sql`
-    INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, from_name)
-    VALUES (1, ${config.smtp_host}, ${config.smtp_port}, ${config.smtp_user}, ${config.smtp_pass}, ${config.from_email}, ${config.from_name})
+    INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, from_name, accountant_email)
+    VALUES (1, ${config.smtp_host}, ${config.smtp_port}, ${config.smtp_user}, ${config.smtp_pass}, ${config.from_email}, ${config.from_name}, ${config.accountant_email || null})
     ON CONFLICT (id) DO UPDATE SET
       smtp_host = ${config.smtp_host},
       smtp_port = ${config.smtp_port},
       smtp_user = ${config.smtp_user},
       smtp_pass = ${config.smtp_pass},
       from_email = ${config.from_email},
-      from_name = ${config.from_name}
+      from_name = ${config.from_name},
+      accountant_email = ${config.accountant_email || null}
   `;
 }

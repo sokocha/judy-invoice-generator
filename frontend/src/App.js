@@ -604,7 +604,192 @@ const styles = `
     font-weight: 700;
     color: #1e40af;
   }
-  
+
+  /* Dashboard Styles */
+  .dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .dashboard-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+
+  .dashboard-stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .dashboard-stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .dashboard-stat-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .dashboard-stat-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    margin-bottom: 0.25rem;
+  }
+
+  .dashboard-stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.2;
+  }
+
+  .dashboard-stat-sub {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.25rem;
+  }
+
+  .dashboard-revenue-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+
+  .dashboard-revenue-card {
+    text-align: center;
+    padding: 1.5rem !important;
+  }
+
+  .dashboard-revenue-title {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+  }
+
+  .dashboard-revenue-amount {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1e40af;
+    margin-bottom: 0.25rem;
+  }
+
+  .dashboard-revenue-usd {
+    font-size: 0.875rem;
+    color: #64748b;
+  }
+
+  .dashboard-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    padding: 0.5rem 0;
+  }
+
+  .dashboard-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #475569;
+    transition: all 0.2s;
+  }
+
+  .dashboard-action-btn:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #1e40af;
+  }
+
+  .dashboard-action-btn svg {
+    color: #64748b;
+  }
+
+  .dashboard-action-btn:hover svg {
+    color: #1e40af;
+  }
+
+  .dashboard-alerts {
+    padding-bottom: 0 !important;
+  }
+
+  .dashboard-alert {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+  }
+
+  .dashboard-alert:last-child {
+    margin-bottom: 1rem;
+  }
+
+  .dashboard-alert-danger {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+  }
+
+  .dashboard-alert-warning {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+  }
+
+  .dashboard-alert-icon {
+    flex-shrink: 0;
+  }
+
+  .dashboard-alert-danger .dashboard-alert-icon {
+    color: #dc2626;
+  }
+
+  .dashboard-alert-warning .dashboard-alert-icon {
+    color: #d97706;
+  }
+
+  .dashboard-alert-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .dashboard-alert-content strong {
+    display: block;
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .dashboard-alert-content p {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .loading {
     display: flex;
     align-items: center;
@@ -880,6 +1065,12 @@ const styles = `
 
   .action-btn-delete { background: #fee2e2; color: #dc2626; }
   .action-btn-delete:hover:not(:disabled) { background: #fecaca; }
+
+  .action-btn-paid { background: #d1fae5; color: #059669; }
+  .action-btn-paid:hover:not(:disabled) { background: #a7f3d0; }
+
+  .action-btn-unpaid { background: #fef3c7; color: #b45309; }
+  .action-btn-unpaid:hover:not(:disabled) { background: #fde68a; }
 
   /* Improved Empty State */
   .empty-state {
@@ -1219,6 +1410,46 @@ const styles = `
       grid-template-columns: repeat(2, 1fr);
     }
 
+    .dashboard-stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .dashboard-stat-card {
+      padding: 1rem;
+    }
+
+    .dashboard-stat-icon {
+      width: 40px;
+      height: 40px;
+    }
+
+    .dashboard-stat-value {
+      font-size: 1.5rem;
+    }
+
+    .dashboard-revenue-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .dashboard-actions {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .dashboard-alert {
+      flex-wrap: wrap;
+    }
+
+    .dashboard-alert-content {
+      flex: 1 1 100%;
+      order: 2;
+      margin-top: 0.5rem;
+    }
+
+    .dashboard-alert .btn {
+      order: 3;
+      margin-left: auto;
+    }
+
     .form-grid {
       grid-template-columns: 1fr;
     }
@@ -1279,6 +1510,20 @@ const styles = `
   @media (max-width: 480px) {
     .stats-grid {
       grid-template-columns: 1fr;
+    }
+
+    .dashboard-stats-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .dashboard-actions {
+      grid-template-columns: 1fr;
+    }
+
+    .dashboard-action-btn {
+      flex-direction: row;
+      justify-content: flex-start;
+      padding: 1rem;
     }
 
     .logo h1 {
@@ -1364,6 +1609,8 @@ const api = {
     body: JSON.stringify(data)
   }).then(r => r.json()),
   sendInvoice: (id) => fetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoicePaid: (id) => fetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoiceUnpaid: (id) => fetch(`${API_BASE}/api/invoices?action=mark-unpaid&id=${id}`, { method: 'POST' }).then(r => r.json()),
   downloadInvoice: async (id, format = 'pdf') => {
     const response = await fetch(`${API_BASE}/api/invoices?action=download&id=${id}&format=${format}`);
     if (!response.ok) throw new Error('Failed to download invoice');
@@ -1432,6 +1679,24 @@ const getDueDateStatus = (dueDate) => {
     return { class: 'badge-due-soon', label: `Due in ${diffDays} day${diffDays === 1 ? '' : 's'}` };
   } else {
     return { class: 'badge-due-later', label: `Due in ${diffDays} days` };
+  }
+};
+
+// Get subscription status (expiring, expired, or OK)
+const getSubscriptionStatus = (subscriptionEnd) => {
+  if (!subscriptionEnd) return { class: '', label: '', status: 'none' };
+  const end = new Date(subscriptionEnd);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { class: 'badge-red', label: 'Expired', status: 'expired', days: Math.abs(diffDays) };
+  } else if (diffDays <= 30) {
+    return { class: 'badge-yellow', label: `${diffDays} days left`, status: 'expiring', days: diffDays };
+  } else {
+    return { class: '', label: '', status: 'ok', days: diffDays };
   }
 };
 
@@ -1982,7 +2247,21 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
                       </span>
                     </td>
                     <td>{firm.num_users}</td>
-                    <td>{formatDate(firm.subscription_end)}</td>
+                    <td>
+                      {(() => {
+                        const subStatus = getSubscriptionStatus(firm.subscription_end);
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <span>{formatDate(firm.subscription_end)}</span>
+                            {subStatus.label && (
+                              <span className={`badge ${subStatus.class}`} style={{ fontSize: '0.65rem' }}>
+                                {subStatus.label}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td>
                       <div className="action-buttons">
                         <Tooltip text="Edit all firm details">
@@ -2931,24 +3210,16 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
 
         {/* Search and Filter */}
         {scheduled.length > 0 && (
-          <div className="filters" style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <div className="search-box" style={{ flex: '1', minWidth: '200px' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }}>
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input
-                type="text"
-                placeholder="Search by firm name..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                style={{ paddingLeft: '2.5rem', width: '100%' }}
-              />
-            </div>
+          <div className="search-filter-bar">
+            <SearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search by firm name..."
+            />
             <select
+              className="filter-select"
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              style={{ minWidth: '140px' }}
             >
               <option value="all">All Statuses</option>
               <option value="pending">Pending</option>
@@ -3352,6 +3623,48 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     addToast('Invoice history exported to CSV', 'success');
   };
 
+  const handleMarkPaid = async (id, invoiceNumber) => {
+    const confirmed = await confirm({
+      title: 'Mark Invoice as Paid',
+      message: `Mark invoice ${invoiceNumber} as paid?`,
+      confirmText: 'Mark Paid',
+      cancelText: 'Cancel',
+      type: 'info'
+    });
+    if (!confirmed) return;
+    setLoading(prev => ({ ...prev, [`${id}-paid`]: true }));
+    try {
+      const result = await api.markInvoicePaid(id);
+      if (result.error) throw new Error(result.error);
+      addToast(`Invoice ${invoiceNumber} marked as paid`, 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`${id}-paid`]: false }));
+  };
+
+  const handleMarkUnpaid = async (id, invoiceNumber) => {
+    const confirmed = await confirm({
+      title: 'Mark Invoice as Unpaid',
+      message: `Revert invoice ${invoiceNumber} to unpaid status?`,
+      confirmText: 'Mark Unpaid',
+      cancelText: 'Cancel',
+      type: 'warning'
+    });
+    if (!confirmed) return;
+    setLoading(prev => ({ ...prev, [`${id}-unpaid`]: true }));
+    try {
+      const result = await api.markInvoiceUnpaid(id);
+      if (result.error) throw new Error(result.error);
+      addToast(`Invoice ${invoiceNumber} marked as unpaid`, 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`${id}-unpaid`]: false }));
+  };
+
   return (
     <div className="card">
       <div className="card-header">
@@ -3384,6 +3697,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
             <option value="all">All Status</option>
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
+            <option value="paid">Paid</option>
           </select>
           <select
             className="filter-select"
@@ -3457,7 +3771,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span>{formatDate(inv.due_date)}</span>
-                          {inv.status !== 'sent' && dueDateStatus.label && (
+                          {inv.status !== 'paid' && dueDateStatus.label && (
                             <span className={`badge ${dueDateStatus.class}`} style={{ fontSize: '0.65rem' }}>
                               {dueDateStatus.label}
                             </span>
@@ -3465,7 +3779,11 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                         </div>
                       </td>
                       <td>
-                        <span className={`badge ${inv.status === 'sent' ? 'badge-green' : 'badge-yellow'}`}>
+                        <span className={`badge ${
+                          inv.status === 'paid' ? 'badge-green' :
+                          inv.status === 'sent' ? 'badge-blue' :
+                          'badge-yellow'
+                        }`}>
                           {inv.status}
                         </span>
                       </td>
@@ -3518,6 +3836,39 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                               )}
                             </button>
                           </Tooltip>
+                          {inv.status === 'sent' && (
+                            <Tooltip text="Mark as paid">
+                              <button
+                                className="action-btn action-btn-paid"
+                                onClick={() => handleMarkPaid(inv.id, inv.invoice_number)}
+                                disabled={loading[`${inv.id}-paid`]}
+                              >
+                                {loading[`${inv.id}-paid`] ? '...' : (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                    <polyline points="22 4 12 14.01 9 11.01"/>
+                                  </svg>
+                                )}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {inv.status === 'paid' && (
+                            <Tooltip text="Mark as unpaid">
+                              <button
+                                className="action-btn action-btn-unpaid"
+                                onClick={() => handleMarkUnpaid(inv.id, inv.invoice_number)}
+                                disabled={loading[`${inv.id}-unpaid`]}
+                              >
+                                {loading[`${inv.id}-unpaid`] ? '...' : (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="15" y1="9" x2="9" y2="15"/>
+                                    <line x1="9" y1="9" x2="15" y2="15"/>
+                                  </svg>
+                                )}
+                              </button>
+                            </Tooltip>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -3543,6 +3894,284 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   );
 }
 
+// Dashboard Section
+function DashboardSection({ firms, invoices, scheduled, onNavigate }) {
+  // Exchange rate (approximate - in production this would be fetched from an API)
+  const GHS_TO_USD = 0.063; // 1 GHS ≈ 0.063 USD
+
+  const formatUSD = (ghsAmount) => {
+    const usd = Number(ghsAmount) * GHS_TO_USD;
+    return `$${usd.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  };
+
+  // Calculate metrics
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+
+  const thisMonthInvoices = invoices.filter(inv => {
+    const invDate = new Date(inv.created_at);
+    return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
+  });
+
+  const sentInvoices = invoices.filter(i => i.status === 'sent');
+  const paidInvoices = invoices.filter(i => i.status === 'paid');
+  const pendingScheduled = scheduled.filter(s => s.status === 'pending');
+
+  // Overdue invoices (sent but past due date and not paid)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const overdueInvoices = sentInvoices.filter(inv => {
+    if (!inv.due_date) return false;
+    const dueDate = new Date(inv.due_date);
+    dueDate.setHours(0, 0, 0, 0);
+    return dueDate < today;
+  });
+
+  // Firms with expiring subscriptions (within 30 days)
+  const expiringFirms = firms.filter(firm => {
+    const status = getSubscriptionStatus(firm.subscription_end);
+    return status.status === 'expiring' || status.status === 'expired';
+  });
+
+  // Revenue calculations
+  const totalRevenue = paidInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
+  const thisMonthRevenue = thisMonthInvoices
+    .filter(inv => inv.status === 'paid')
+    .reduce((sum, inv) => sum + Number(inv.total || 0), 0);
+  const outstandingRevenue = sentInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
+
+  return (
+    <div className="dashboard">
+      {/* Quick Stats */}
+      <div className="dashboard-stats-grid">
+        <div className="dashboard-stat-card">
+          <div className="dashboard-stat-icon" style={{ background: '#dbeafe', color: '#2563eb' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div className="dashboard-stat-content">
+            <div className="dashboard-stat-label">Law Firms</div>
+            <div className="dashboard-stat-value">{firms.length}</div>
+            {expiringFirms.length > 0 && (
+              <div className="dashboard-stat-sub" style={{ color: '#dc2626' }}>
+                {expiringFirms.length} expiring soon
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="dashboard-stat-card">
+          <div className="dashboard-stat-icon" style={{ background: '#d1fae5', color: '#059669' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <div className="dashboard-stat-content">
+            <div className="dashboard-stat-label">Paid Invoices</div>
+            <div className="dashboard-stat-value">{paidInvoices.length}</div>
+            <div className="dashboard-stat-sub">of {invoices.length} total</div>
+          </div>
+        </div>
+
+        <div className="dashboard-stat-card">
+          <div className="dashboard-stat-icon" style={{ background: '#fef3c7', color: '#b45309' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div className="dashboard-stat-content">
+            <div className="dashboard-stat-label">Pending Scheduled</div>
+            <div className="dashboard-stat-value">{pendingScheduled.length}</div>
+            <div className="dashboard-stat-sub">invoices queued</div>
+          </div>
+        </div>
+
+        <div className="dashboard-stat-card">
+          <div className="dashboard-stat-icon" style={{ background: '#fee2e2', color: '#dc2626' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <div className="dashboard-stat-content">
+            <div className="dashboard-stat-label">Overdue</div>
+            <div className="dashboard-stat-value">{overdueInvoices.length}</div>
+            <div className="dashboard-stat-sub">need attention</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Revenue Cards */}
+      <div className="dashboard-revenue-grid">
+        <div className="card dashboard-revenue-card">
+          <h3 className="dashboard-revenue-title">Total Revenue (Paid)</h3>
+          <div className="dashboard-revenue-amount">{formatCurrency(totalRevenue)}</div>
+          <div className="dashboard-revenue-usd">{formatUSD(totalRevenue)} USD</div>
+        </div>
+
+        <div className="card dashboard-revenue-card">
+          <h3 className="dashboard-revenue-title">This Month (Paid)</h3>
+          <div className="dashboard-revenue-amount">{formatCurrency(thisMonthRevenue)}</div>
+          <div className="dashboard-revenue-usd">{formatUSD(thisMonthRevenue)} USD</div>
+        </div>
+
+        <div className="card dashboard-revenue-card">
+          <h3 className="dashboard-revenue-title">Outstanding (Sent)</h3>
+          <div className="dashboard-revenue-amount">{formatCurrency(outstandingRevenue)}</div>
+          <div className="dashboard-revenue-usd">{formatUSD(outstandingRevenue)} USD</div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Quick Actions</h2>
+        </div>
+        <div className="dashboard-actions">
+          <button className="dashboard-action-btn" onClick={() => onNavigate('generate')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+            Generate Invoice
+          </button>
+          <button className="dashboard-action-btn" onClick={() => onNavigate('firms')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Law Firm
+          </button>
+          <button className="dashboard-action-btn" onClick={() => onNavigate('scheduled')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            View Scheduled
+          </button>
+          <button className="dashboard-action-btn" onClick={() => onNavigate('history')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export History
+          </button>
+        </div>
+      </div>
+
+      {/* Alerts Section */}
+      {(overdueInvoices.length > 0 || expiringFirms.length > 0) && (
+        <div className="card dashboard-alerts">
+          <div className="card-header">
+            <h2 className="card-title">Attention Required</h2>
+          </div>
+
+          {overdueInvoices.length > 0 && (
+            <div className="dashboard-alert dashboard-alert-danger">
+              <div className="dashboard-alert-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              </div>
+              <div className="dashboard-alert-content">
+                <strong>{overdueInvoices.length} Overdue Invoice{overdueInvoices.length > 1 ? 's' : ''}</strong>
+                <p>
+                  {overdueInvoices.slice(0, 3).map(inv => inv.firm_name).join(', ')}
+                  {overdueInvoices.length > 3 && ` and ${overdueInvoices.length - 3} more`}
+                </p>
+              </div>
+              <button className="btn btn-sm btn-secondary" onClick={() => onNavigate('history')}>
+                View
+              </button>
+            </div>
+          )}
+
+          {expiringFirms.length > 0 && (
+            <div className="dashboard-alert dashboard-alert-warning">
+              <div className="dashboard-alert-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <div className="dashboard-alert-content">
+                <strong>{expiringFirms.length} Subscription{expiringFirms.length > 1 ? 's' : ''} Expiring Soon</strong>
+                <p>
+                  {expiringFirms.slice(0, 3).map(f => f.firm_name).join(', ')}
+                  {expiringFirms.length > 3 && ` and ${expiringFirms.length - 3} more`}
+                </p>
+              </div>
+              <button className="btn btn-sm btn-secondary" onClick={() => onNavigate('firms')}>
+                View
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recent Activity */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Recent Invoices</h2>
+          <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('history')}>
+            View All
+          </button>
+        </div>
+        {invoices.length === 0 ? (
+          <div className="empty-state" style={{ padding: '2rem' }}>
+            <p>No invoices yet. Generate your first invoice to see activity here.</p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Invoice #</th>
+                  <th>Firm</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.slice(0, 5).map(inv => (
+                  <tr key={inv.id}>
+                    <td><strong>{inv.invoice_number}</strong></td>
+                    <td>{inv.firm_name}</td>
+                    <td>{formatCurrency(inv.total)}</td>
+                    <td>
+                      <span className={`badge ${
+                        inv.status === 'paid' ? 'badge-green' :
+                        inv.status === 'sent' ? 'badge-blue' :
+                        'badge-yellow'
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td>{formatDate(inv.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Settings Section
 function SettingsSection() {
   const [config, setConfig] = useState({
@@ -3551,7 +4180,8 @@ function SettingsSection() {
     smtp_user: '',
     smtp_pass: '',
     from_email: '',
-    from_name: 'JUDY Legal Research'
+    from_name: 'JUDY Legal Research',
+    accountant_email: ''
   });
   const [loading, setLoading] = useState(false);
   const [schedulerRunning, setSchedulerRunning] = useState(false);
@@ -3695,6 +4325,27 @@ function SettingsSection() {
 
       <div className="card">
         <div className="card-header">
+          <h2 className="card-title">Accountant Settings</h2>
+        </div>
+        <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.875rem' }}>
+          Set the email address where paid invoice reports will be sent.
+        </p>
+        <div className="form-group" style={{ maxWidth: '400px' }}>
+          <label>Accountant Email</label>
+          <input
+            type="email"
+            value={config.accountant_email}
+            onChange={e => setConfig({ ...config, accountant_email: e.target.value })}
+            placeholder="e.g., accountant@company.com"
+          />
+        </div>
+        <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
+          Save Accountant Email
+        </button>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
           <h2 className="card-title">Scheduler</h2>
         </div>
         
@@ -3721,7 +4372,7 @@ function SettingsSection() {
 
 // Main App Component (inner)
 function AppContent() {
-  const [activeTab, setActiveTab] = useState('generate');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [firms, setFirms] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [scheduled, setScheduled] = useState([]);
@@ -3818,6 +4469,12 @@ function AppContent() {
           </button>
           <nav className={`nav ${mobileMenuOpen ? 'nav-open' : ''}`}>
             <button
+              className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setActiveTab('dashboard')}
+            >
+              Dashboard
+            </button>
+            <button
               className={`nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
               onClick={() => setActiveTab('generate')}
             >
@@ -3862,27 +4519,15 @@ function AppContent() {
           </div>
         ) : (
           <>
-            {/* Stats */}
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-label">Law Firms</div>
-                <div className="stat-value">{firms.length}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Total Invoices</div>
-                <div className="stat-value">{invoices.length}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Pending Scheduled</div>
-                <div className="stat-value">{scheduled.filter(s => s.status === 'pending').length}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Invoices Sent</div>
-                <div className="stat-value">{invoices.filter(i => i.status === 'sent').length}</div>
-              </div>
-            </div>
-
             {/* Content based on active tab */}
+            {activeTab === 'dashboard' && (
+              <DashboardSection
+                firms={firms}
+                invoices={invoices}
+                scheduled={scheduled}
+                onNavigate={setActiveTab}
+              />
+            )}
             {activeTab === 'generate' && (
               <>
                 <GenerateInvoiceSection firms={firms} onRefresh={loadData} />

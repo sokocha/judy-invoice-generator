@@ -73,6 +73,20 @@ export default async function handler(req, res) {
     `;
     migrations.push('plan_duration');
 
+    // Add accountant_email column to email_config if it doesn't exist
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'email_config' AND column_name = 'accountant_email'
+        ) THEN
+          ALTER TABLE email_config ADD COLUMN accountant_email VARCHAR(255);
+        END IF;
+      END $$
+    `;
+    migrations.push('accountant_email');
+
     return res.status(200).json({
       success: true,
       message: `Migration completed: ${migrations.join(', ')} columns processed`

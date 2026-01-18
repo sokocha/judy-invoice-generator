@@ -120,6 +120,27 @@ export default async function handler(req, res) {
       });
     }
 
+    // POST /api/invoices?action=mark-paid&id=123
+    if (req.method === 'POST' && action === 'mark-paid' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      await db.updateInvoiceStatus(id, 'paid');
+      return res.status(200).json({ success: true, message: 'Invoice marked as paid' });
+    }
+
+    // POST /api/invoices?action=mark-unpaid&id=123
+    if (req.method === 'POST' && action === 'mark-unpaid' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      // Revert to sent status (since it was sent before being marked paid)
+      await db.updateInvoiceStatus(id, 'sent');
+      return res.status(200).json({ success: true, message: 'Invoice marked as unpaid' });
+    }
+
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Invoices API error:', error);

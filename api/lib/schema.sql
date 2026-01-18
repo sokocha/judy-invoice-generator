@@ -95,8 +95,17 @@ CREATE TABLE IF NOT EXISTS email_config (
   smtp_pass VARCHAR(255),
   from_email VARCHAR(255),
   from_name VARCHAR(255) DEFAULT 'JUDY Legal Research',
+  accountant_email VARCHAR(255),
   CONSTRAINT single_row CHECK (id = 1)
 );
+
+-- Add accountant_email column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_config' AND column_name = 'accountant_email') THEN
+    ALTER TABLE email_config ADD COLUMN accountant_email VARCHAR(255);
+  END IF;
+END $$;
 
 -- Insert default email config row
 INSERT INTO email_config (id, from_name) VALUES (1, 'JUDY Legal Research')
