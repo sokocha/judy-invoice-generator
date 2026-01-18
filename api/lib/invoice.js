@@ -1,4 +1,5 @@
-import createReport from 'docx-templates';
+import pkg from 'docx-templates';
+const { createReport } = pkg;
 import { list } from '@vercel/blob';
 import * as db from './db.js';
 
