@@ -1,7 +1,100 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
 
 // API base URL - empty for same-origin requests on Vercel
 const API_BASE = '';
+
+// Confirmation Dialog Context
+const ConfirmContext = createContext();
+
+function ConfirmProvider({ children }) {
+  const [confirmState, setConfirmState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    type: 'warning', // 'warning', 'danger', 'info'
+    onConfirm: () => {},
+    onCancel: () => {}
+  });
+
+  const confirm = useCallback(({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning' }) => {
+    return new Promise((resolve) => {
+      setConfirmState({
+        isOpen: true,
+        title,
+        message,
+        confirmText,
+        cancelText,
+        type,
+        onConfirm: () => {
+          setConfirmState(prev => ({ ...prev, isOpen: false }));
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmState(prev => ({ ...prev, isOpen: false }));
+          resolve(false);
+        }
+      });
+    });
+  }, []);
+
+  return (
+    <ConfirmContext.Provider value={{ confirm }}>
+      {children}
+      {confirmState.isOpen && (
+        <div className="modal-overlay" onClick={confirmState.onCancel}>
+          <div className="confirm-dialog" onClick={e => e.stopPropagation()}>
+            <div className={`confirm-icon confirm-icon-${confirmState.type}`}>
+              {confirmState.type === 'danger' && (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+              )}
+              {confirmState.type === 'warning' && (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              )}
+              {confirmState.type === 'info' && (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="16" x2="12" y2="12"/>
+                  <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+              )}
+            </div>
+            <h3 className="confirm-title">{confirmState.title}</h3>
+            <p className="confirm-message">{confirmState.message}</p>
+            <div className="confirm-actions">
+              <button className="btn btn-secondary" onClick={confirmState.onCancel}>
+                {confirmState.cancelText}
+              </button>
+              <button
+                className={`btn ${confirmState.type === 'danger' ? 'btn-danger' : 'btn-primary'}`}
+                onClick={confirmState.onConfirm}
+              >
+                {confirmState.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </ConfirmContext.Provider>
+  );
+}
+
+function useConfirm() {
+  const context = useContext(ConfirmContext);
+  if (!context) {
+    throw new Error('useConfirm must be used within a ConfirmProvider');
+  }
+  return context.confirm;
+}
 
 // Toast notification context
 const ToastContext = React.createContext();
@@ -843,6 +936,378 @@ const styles = `
   .export-btn:hover {
     background: #047857;
   }
+
+  /* Confirmation Dialog */
+  .confirm-dialog {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    animation: scaleIn 0.2s ease-out;
+  }
+
+  .confirm-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+  }
+
+  .confirm-icon-danger {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+
+  .confirm-icon-warning {
+    background: #fef3c7;
+    color: #d97706;
+  }
+
+  .confirm-icon-info {
+    background: #dbeafe;
+    color: #2563eb;
+  }
+
+  .confirm-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 0.5rem;
+  }
+
+  .confirm-message {
+    color: #64748b;
+    font-size: 0.875rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+  }
+
+  .confirm-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+  }
+
+  .confirm-actions .btn {
+    min-width: 100px;
+  }
+
+  /* Tooltip */
+  .tooltip-wrapper {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .tooltip-wrapper .tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: white;
+    padding: 0.375rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s;
+    z-index: 1000;
+    margin-bottom: 0.5rem;
+    pointer-events: none;
+  }
+
+  .tooltip-wrapper .tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1e293b;
+  }
+
+  .tooltip-wrapper:hover .tooltip {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* Due Date Badges */
+  .badge-overdue {
+    background: #fee2e2;
+    color: #dc2626;
+    animation: pulse 2s infinite;
+  }
+
+  .badge-due-soon {
+    background: #fef3c7;
+    color: #d97706;
+  }
+
+  .badge-due-later {
+    background: #d1fae5;
+    color: #059669;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  /* Button with spinner */
+  .btn-loading {
+    position: relative;
+    color: transparent !important;
+  }
+
+  .btn-loading .btn-spinner {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .btn-loading.btn-secondary .btn-spinner {
+    border-color: rgba(0,0,0,0.2);
+    border-top-color: #475569;
+  }
+
+  /* Form Validation */
+  .form-group.has-error input,
+  .form-group.has-error select {
+    border-color: #dc2626;
+    background: #fef2f2;
+  }
+
+  .form-group.has-error input:focus,
+  .form-group.has-error select:focus {
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+  }
+
+  .form-error {
+    color: #dc2626;
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .form-group.has-success input,
+  .form-group.has-success select {
+    border-color: #059669;
+  }
+
+  /* Inline Editing */
+  .inline-edit-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .inline-edit-input {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid #3b82f6;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    width: 100%;
+    min-width: 80px;
+  }
+
+  .inline-edit-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  }
+
+  .inline-edit-actions {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .inline-edit-btn {
+    padding: 0.25rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .inline-edit-btn-save {
+    background: #d1fae5;
+    color: #059669;
+  }
+
+  .inline-edit-btn-cancel {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+
+  /* Responsive Design */
+  .mobile-menu-btn {
+    display: none;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    padding: 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .mobile-menu-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  @media (max-width: 768px) {
+    .header-content {
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .mobile-menu-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .nav {
+      display: none;
+      width: 100%;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .nav.nav-open {
+      display: flex;
+    }
+
+    .nav-btn {
+      width: 100%;
+      text-align: left;
+      padding: 0.75rem 1rem;
+    }
+
+    .main {
+      padding: 1rem;
+    }
+
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .card {
+      padding: 1rem;
+    }
+
+    .card-header {
+      flex-direction: column;
+      gap: 1rem;
+      align-items: flex-start;
+    }
+
+    .search-filter-bar {
+      flex-direction: column;
+    }
+
+    .search-input-wrapper {
+      max-width: 100%;
+    }
+
+    .filter-select {
+      width: 100%;
+    }
+
+    .table-container {
+      font-size: 0.8rem;
+    }
+
+    th, td {
+      padding: 0.5rem;
+    }
+
+    .action-buttons {
+      flex-direction: column;
+    }
+
+    .modal {
+      max-width: 95%;
+      margin: 0.5rem;
+    }
+
+    .modal-body {
+      padding: 1rem;
+    }
+
+    .pagination {
+      flex-wrap: wrap;
+    }
+
+    .pagination-btn {
+      padding: 0.375rem 0.5rem;
+      font-size: 0.75rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .stats-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .logo h1 {
+      font-size: 1.25rem;
+    }
+
+    .logo span {
+      font-size: 0.75rem;
+    }
+
+    .confirm-actions {
+      flex-direction: column;
+    }
+
+    .confirm-actions .btn {
+      width: 100%;
+    }
+  }
+
+  /* Keyboard shortcut hints */
+  .shortcut-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.625rem;
+    color: rgba(255,255,255,0.7);
+    margin-left: 0.5rem;
+  }
+
+  .shortcut-key {
+    background: rgba(255,255,255,0.2);
+    padding: 0.125rem 0.375rem;
+    border-radius: 3px;
+    font-family: monospace;
+  }
+
+  @media (max-width: 768px) {
+    .shortcut-hint {
+      display: none;
+    }
+  }
 `;
 
 // API Functions - Using query parameters for Vercel Hobby plan compatibility
@@ -934,8 +1399,63 @@ const formatDate = (dateStr) => {
   });
 };
 
+// Get due date status and class
+const getDueDateStatus = (dueDate) => {
+  if (!dueDate) return { class: '', label: '' };
+  const due = new Date(dueDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { class: 'badge-overdue', label: `${Math.abs(diffDays)} days overdue` };
+  } else if (diffDays === 0) {
+    return { class: 'badge-overdue', label: 'Due today' };
+  } else if (diffDays <= 7) {
+    return { class: 'badge-due-soon', label: `Due in ${diffDays} day${diffDays === 1 ? '' : 's'}` };
+  } else {
+    return { class: 'badge-due-later', label: `Due in ${diffDays} days` };
+  }
+};
+
+// Tooltip Component
+function Tooltip({ children, text }) {
+  return (
+    <span className="tooltip-wrapper">
+      {children}
+      <span className="tooltip">{text}</span>
+    </span>
+  );
+}
+
+// Button with Loading State Component
+function LoadingButton({ children, loading, className = '', ...props }) {
+  return (
+    <button
+      className={`${className} ${loading ? 'btn-loading' : ''}`}
+      disabled={loading || props.disabled}
+      {...props}
+    >
+      {children}
+      {loading && <span className="btn-spinner" />}
+    </button>
+  );
+}
+
 // Modal Component
 function Modal({ isOpen, onClose, title, children }) {
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1123,7 +1643,61 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
+  const [errors, setErrors] = useState({});
+  const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' });
   const { addToast } = useToast();
+  const confirm = useConfirm();
+
+  // Form validation
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.firm_name.trim()) {
+      newErrors.firm_name = 'Firm name is required';
+    }
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+    if (!formData.street_address.trim()) {
+      newErrors.street_address = 'Street address is required';
+    }
+    if (!formData.city.trim()) {
+      newErrors.city = 'City is required';
+    }
+    if (formData.base_price < 0) {
+      newErrors.base_price = 'Price cannot be negative';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Real-time field validation
+  const validateField = (field, value) => {
+    const newErrors = { ...errors };
+    switch (field) {
+      case 'firm_name':
+        if (!value.trim()) newErrors.firm_name = 'Firm name is required';
+        else delete newErrors.firm_name;
+        break;
+      case 'email':
+        if (!value.trim()) newErrors.email = 'Email is required';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) newErrors.email = 'Invalid email format';
+        else delete newErrors.email;
+        break;
+      case 'street_address':
+        if (!value.trim()) newErrors.street_address = 'Street address is required';
+        else delete newErrors.street_address;
+        break;
+      case 'city':
+        if (!value.trim()) newErrors.city = 'City is required';
+        else delete newErrors.city;
+        break;
+      default:
+        break;
+    }
+    setErrors(newErrors);
+  };
 
   // Filter firms based on search and plan filter
   const filteredFirms = firms.filter(firm => {
@@ -1135,6 +1709,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
   });
 
   const handleOpenModal = (firm = null) => {
+    setErrors({});
     if (firm) {
       setEditingFirm(firm);
       setFormData({
@@ -1166,6 +1741,10 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
   };
 
   const handleSave = async () => {
+    if (!validateForm()) {
+      addToast('Please fix the errors in the form', 'error');
+      return;
+    }
     setLoading(true);
     try {
       if (editingFirm) {
@@ -1183,11 +1762,42 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
     setLoading(false);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this firm?')) return;
+  const handleDelete = async (id, firmName) => {
+    const confirmed = await confirm({
+      title: 'Delete Law Firm',
+      message: `Are you sure you want to delete "${firmName}"? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      type: 'danger'
+    });
+    if (!confirmed) return;
     try {
       await api.deleteFirm(id);
       addToast('Firm deleted successfully!', 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+  };
+
+  // Inline editing handlers
+  const startInlineEdit = (id, field, value) => {
+    setInlineEdit({ id, field, value });
+  };
+
+  const cancelInlineEdit = () => {
+    setInlineEdit({ id: null, field: null, value: '' });
+  };
+
+  const saveInlineEdit = async (firm) => {
+    if (!inlineEdit.value.trim()) {
+      addToast('Field cannot be empty', 'error');
+      return;
+    }
+    try {
+      await api.updateFirm(firm.id, { ...firm, [inlineEdit.field]: inlineEdit.value });
+      addToast('Updated successfully!', 'success');
+      cancelInlineEdit();
       onRefresh();
     } catch (error) {
       addToast(error.message, 'error');
@@ -1262,9 +1872,82 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
               <tbody>
                 {filteredFirms.map(firm => (
                   <tr key={firm.id}>
-                    <td><strong>{firm.firm_name}</strong></td>
+                    <td>
+                      {inlineEdit.id === firm.id && inlineEdit.field === 'firm_name' ? (
+                        <div className="inline-edit-cell">
+                          <input
+                            className="inline-edit-input"
+                            value={inlineEdit.value}
+                            onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveInlineEdit(firm);
+                              if (e.key === 'Escape') cancelInlineEdit();
+                            }}
+                            autoFocus
+                          />
+                          <div className="inline-edit-actions">
+                            <button className="inline-edit-btn inline-edit-btn-save" onClick={() => saveInlineEdit(firm)}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            </button>
+                            <button className="inline-edit-btn inline-edit-btn-cancel" onClick={cancelInlineEdit}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <strong
+                          onClick={() => startInlineEdit(firm.id, 'firm_name', firm.firm_name)}
+                          style={{ cursor: 'pointer' }}
+                          title="Click to edit"
+                        >
+                          {firm.firm_name}
+                        </strong>
+                      )}
+                    </td>
                     <td>{firm.street_address}, {firm.city}</td>
-                    <td>{firm.email}</td>
+                    <td>
+                      {inlineEdit.id === firm.id && inlineEdit.field === 'email' ? (
+                        <div className="inline-edit-cell">
+                          <input
+                            className="inline-edit-input"
+                            type="email"
+                            value={inlineEdit.value}
+                            onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveInlineEdit(firm);
+                              if (e.key === 'Escape') cancelInlineEdit();
+                            }}
+                            autoFocus
+                          />
+                          <div className="inline-edit-actions">
+                            <button className="inline-edit-btn inline-edit-btn-save" onClick={() => saveInlineEdit(firm)}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            </button>
+                            <button className="inline-edit-btn inline-edit-btn-cancel" onClick={cancelInlineEdit}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <span
+                          onClick={() => startInlineEdit(firm.id, 'email', firm.email)}
+                          style={{ cursor: 'pointer' }}
+                          title="Click to edit"
+                        >
+                          {firm.email}
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <span className={`badge ${firm.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
                         {firm.plan_type === 'plus' ? 'Plus' : 'Standard'}
@@ -1274,18 +1957,22 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
                     <td>{formatDate(firm.subscription_end)}</td>
                     <td>
                       <div className="action-buttons">
-                        <button className="action-btn action-btn-edit" onClick={() => handleOpenModal(firm)} title="Edit">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                        </button>
-                        <button className="action-btn action-btn-delete" onClick={() => handleDelete(firm.id)} title="Delete">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                          </svg>
-                        </button>
+                        <Tooltip text="Edit all firm details">
+                          <button className="action-btn action-btn-edit" onClick={() => handleOpenModal(firm)}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          </button>
+                        </Tooltip>
+                        <Tooltip text="Delete this firm">
+                          <button className="action-btn action-btn-delete" onClick={() => handleDelete(firm.id, firm.firm_name)}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                          </button>
+                        </Tooltip>
                       </div>
                     </td>
                   </tr>
@@ -1299,41 +1986,57 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingFirm ? 'Edit Law Firm' : 'Add Law Firm'}>
         <div className="modal-body">
           <div className="form-grid">
-            <div className="form-group">
+            <div className={`form-group ${errors.firm_name ? 'has-error' : formData.firm_name ? 'has-success' : ''}`}>
               <label>Firm Name *</label>
               <input
                 type="text"
                 value={formData.firm_name}
-                onChange={e => setFormData({ ...formData, firm_name: e.target.value })}
+                onChange={e => {
+                  setFormData({ ...formData, firm_name: e.target.value });
+                  validateField('firm_name', e.target.value);
+                }}
                 placeholder="e.g., ENS Africa"
               />
+              {errors.firm_name && <div className="form-error">{errors.firm_name}</div>}
             </div>
-            <div className="form-group">
+            <div className={`form-group ${errors.email ? 'has-error' : formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) ? 'has-success' : ''}`}>
               <label>Email *</label>
               <input
                 type="email"
                 value={formData.email}
-                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                onChange={e => {
+                  setFormData({ ...formData, email: e.target.value });
+                  validateField('email', e.target.value);
+                }}
                 placeholder="e.g., billing@ensafrica.com"
               />
+              {errors.email && <div className="form-error">{errors.email}</div>}
             </div>
-            <div className="form-group">
+            <div className={`form-group ${errors.street_address ? 'has-error' : formData.street_address ? 'has-success' : ''}`}>
               <label>Street Address *</label>
               <input
                 type="text"
                 value={formData.street_address}
-                onChange={e => setFormData({ ...formData, street_address: e.target.value })}
+                onChange={e => {
+                  setFormData({ ...formData, street_address: e.target.value });
+                  validateField('street_address', e.target.value);
+                }}
                 placeholder="e.g., 4th Floor, Heritage Tower"
               />
+              {errors.street_address && <div className="form-error">{errors.street_address}</div>}
             </div>
-            <div className="form-group">
+            <div className={`form-group ${errors.city ? 'has-error' : formData.city ? 'has-success' : ''}`}>
               <label>City *</label>
               <input
                 type="text"
                 value={formData.city}
-                onChange={e => setFormData({ ...formData, city: e.target.value })}
+                onChange={e => {
+                  setFormData({ ...formData, city: e.target.value });
+                  validateField('city', e.target.value);
+                }}
                 placeholder="e.g., Accra, Ghana"
               />
+              {errors.city && <div className="form-error">{errors.city}</div>}
             </div>
             <div className="form-group">
               <label>Plan Type</label>
@@ -1354,7 +2057,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
                 onChange={e => setFormData({ ...formData, num_users: parseInt(e.target.value) || 1 })}
               />
             </div>
-            <div className="form-group">
+            <div className={`form-group ${errors.base_price ? 'has-error' : ''}`}>
               <label>Base Price (GHS)</label>
               <input
                 type="number"
@@ -1363,6 +2066,7 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
                 value={formData.base_price}
                 onChange={e => setFormData({ ...formData, base_price: parseFloat(e.target.value) || 0 })}
               />
+              {errors.base_price && <div className="form-error">{errors.base_price}</div>}
             </div>
             <div className="form-group">
               <label>Subscription Start</label>
@@ -1384,9 +2088,9 @@ function FirmsSection({ firms, onRefresh, isLoading }) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
-            {loading ? 'Saving...' : (editingFirm ? 'Update' : 'Add Firm')}
-          </button>
+          <LoadingButton className="btn btn-primary" onClick={handleSave} loading={loading}>
+            {editingFirm ? 'Update' : 'Add Firm'}
+          </LoadingButton>
         </div>
       </Modal>
     </>
@@ -1405,7 +2109,9 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   });
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(null); // 'preview', 'pdf', 'docx', 'send'
   const { addToast } = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => {
     // Set default due date to 30 days from now
@@ -1434,14 +2140,14 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
       addToast('Please select a law firm', 'error');
       return;
     }
-    setLoading(true);
+    setLoadingAction('preview');
     try {
       const data = await api.previewInvoice(formData);
       setPreview(data);
     } catch (error) {
       addToast(error.message, 'error');
     }
-    setLoading(false);
+    setLoadingAction(null);
   };
 
   const handleDownload = async (format = 'docx') => {
@@ -1449,7 +2155,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
       addToast('Please select a law firm', 'error');
       return;
     }
-    setLoading(true);
+    setLoadingAction(format);
     try {
       const { blob, invoiceNumber } = await api.generateInvoice(formData, format);
       const url = window.URL.createObjectURL(blob);
@@ -1465,7 +2171,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     } catch (error) {
       addToast(error.message, 'error');
     }
-    setLoading(false);
+    setLoadingAction(null);
   };
 
   const handleSend = async () => {
@@ -1473,8 +2179,16 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
       addToast('Please select a law firm', 'error');
       return;
     }
-    if (!window.confirm('Send invoice via email to the selected firm?')) return;
-    setLoading(true);
+    const selectedFirm = firms.find(f => f.id === parseInt(formData.firmId));
+    const confirmed = await confirm({
+      title: 'Send Invoice',
+      message: `Generate and send invoice to ${selectedFirm?.firm_name} (${selectedFirm?.email})?`,
+      confirmText: 'Send',
+      cancelText: 'Cancel',
+      type: 'info'
+    });
+    if (!confirmed) return;
+    setLoadingAction('send');
     try {
       const result = await api.generateAndSendInvoice(formData);
       if (result.error) throw new Error(result.error);
@@ -1483,7 +2197,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     } catch (error) {
       addToast(error.message, 'error');
     }
-    setLoading(false);
+    setLoadingAction(null);
   };
 
   return (
@@ -1558,43 +2272,59 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
       </div>
 
       <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
-        <button className="btn btn-secondary" onClick={handlePreview} disabled={loading}>
-          Preview
-        </button>
-        <button
-          className="btn"
-          onClick={() => handleDownload('pdf')}
-          disabled={loading}
-          style={{ background: '#dc2626', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"/>
-          </svg>
-          {loading ? 'Processing...' : 'Download PDF'}
-        </button>
-        <button
-          className="btn"
-          onClick={() => handleDownload('docx')}
-          disabled={loading}
-          style={{ background: '#2b579a', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13zm-4 5.5l1.1 4.5h.8l.9-3 .9 3h.8l1.1-4.5h-1l-.6 2.8-.9-2.8h-.6l-.9 2.8-.6-2.8H9z"/>
-          </svg>
-          {loading ? 'Processing...' : 'Download Word'}
-        </button>
-        <button
-          className="btn"
-          onClick={handleSend}
-          disabled={loading}
-          style={{ background: '#059669', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-          {loading ? 'Processing...' : 'Generate & Send'}
-        </button>
+        <Tooltip text="Preview invoice amounts before generating">
+          <LoadingButton
+            className="btn btn-secondary"
+            onClick={handlePreview}
+            loading={loadingAction === 'preview'}
+            disabled={loadingAction !== null}
+          >
+            Preview
+          </LoadingButton>
+        </Tooltip>
+        <Tooltip text="Generate and download invoice as PDF">
+          <LoadingButton
+            className="btn"
+            onClick={() => handleDownload('pdf')}
+            loading={loadingAction === 'pdf'}
+            disabled={loadingAction !== null}
+            style={{ background: '#dc2626', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"/>
+            </svg>
+            Download PDF
+          </LoadingButton>
+        </Tooltip>
+        <Tooltip text="Generate and download invoice as Word document">
+          <LoadingButton
+            className="btn"
+            onClick={() => handleDownload('docx')}
+            loading={loadingAction === 'docx'}
+            disabled={loadingAction !== null}
+            style={{ background: '#2b579a', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13zm-4 5.5l1.1 4.5h.8l.9-3 .9 3h.8l1.1-4.5h-1l-.6 2.8-.9-2.8h-.6l-.9 2.8-.6-2.8H9z"/>
+            </svg>
+            Download Word
+          </LoadingButton>
+        </Tooltip>
+        <Tooltip text="Generate PDF and send via email">
+          <LoadingButton
+            className="btn"
+            onClick={handleSend}
+            loading={loadingAction === 'send'}
+            disabled={loadingAction !== null}
+            style={{ background: '#059669', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+            Generate & Send
+          </LoadingButton>
+        </Tooltip>
       </div>
 
       {preview && (
@@ -1660,6 +2390,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
   const [loading, setLoading] = useState({});
   const [formLoading, setFormLoading] = useState(false);
   const { addToast } = useToast();
+  const confirm = useConfirm();
 
   // Auto-populate from selected firm
   useEffect(() => {
@@ -1694,12 +2425,19 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     setFormLoading(false);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this scheduled invoice?')) return;
+  const handleDelete = async (id, firmName) => {
+    const confirmed = await confirm({
+      title: 'Cancel Scheduled Invoice',
+      message: `Are you sure you want to cancel this scheduled invoice for "${firmName}"?`,
+      confirmText: 'Cancel Invoice',
+      cancelText: 'Keep',
+      type: 'danger'
+    });
+    if (!confirmed) return;
     setLoading(prev => ({ ...prev, [id]: 'delete' }));
     try {
       await api.deleteScheduled(id);
-      addToast('Scheduled invoice deleted!', 'success');
+      addToast('Scheduled invoice cancelled!', 'success');
       onRefresh();
     } catch (error) {
       addToast(error.message, 'error');
@@ -1707,8 +2445,15 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     setLoading(prev => ({ ...prev, [id]: null }));
   };
 
-  const handleProcessNow = async (id, email) => {
-    if (!window.confirm(`Process and send invoice to ${email} now?`)) return;
+  const handleProcessNow = async (id, email, firmName) => {
+    const confirmed = await confirm({
+      title: 'Process Invoice Now',
+      message: `Generate and send invoice to ${firmName} (${email}) immediately?`,
+      confirmText: 'Send Now',
+      cancelText: 'Cancel',
+      type: 'info'
+    });
+    if (!confirmed) return;
     setLoading(prev => ({ ...prev, [id]: 'process' }));
     try {
       const result = await api.processScheduledSingle(id);
@@ -1785,32 +2530,34 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                     <td>
                       {item.status === 'pending' && (
                         <div className="action-buttons">
-                          <button
-                            className="action-btn action-btn-send"
-                            onClick={() => handleProcessNow(item.id, item.email)}
-                            disabled={loading[item.id]}
-                            title="Process & Send Now"
-                          >
-                            {loading[item.id] === 'process' ? '...' : (
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <line x1="22" y1="2" x2="11" y2="13"/>
-                                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                              </svg>
-                            )}
-                          </button>
-                          <button
-                            className="action-btn action-btn-delete"
-                            onClick={() => handleDelete(item.id)}
-                            disabled={loading[item.id]}
-                            title="Cancel"
-                          >
-                            {loading[item.id] === 'delete' ? '...' : (
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <line x1="18" y1="6" x2="6" y2="18"/>
-                                <line x1="6" y1="6" x2="18" y2="18"/>
-                              </svg>
-                            )}
-                          </button>
+                          <Tooltip text="Process and send invoice now">
+                            <button
+                              className="action-btn action-btn-send"
+                              onClick={() => handleProcessNow(item.id, item.email, item.firm_name)}
+                              disabled={loading[item.id]}
+                            >
+                              {loading[item.id] === 'process' ? '...' : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <line x1="22" y1="2" x2="11" y2="13"/>
+                                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                                </svg>
+                              )}
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Cancel scheduled invoice">
+                            <button
+                              className="action-btn action-btn-delete"
+                              onClick={() => handleDelete(item.id, item.firm_name)}
+                              disabled={loading[item.id]}
+                            >
+                              {loading[item.id] === 'delete' ? '...' : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <line x1="18" y1="6" x2="6" y2="18"/>
+                                  <line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                              )}
+                            </button>
+                          </Tooltip>
                         </div>
                       )}
                     </td>
@@ -1917,6 +2664,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const { addToast } = useToast();
+  const confirm = useConfirm();
 
   // Filter invoices
   const filteredInvoices = invoices.filter(inv => {
@@ -1958,8 +2706,15 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setLoading(prev => ({ ...prev, [`${id}-${format}`]: false }));
   };
 
-  const handleSend = async (id, email) => {
-    if (!window.confirm(`Send invoice to ${email}?`)) return;
+  const handleSend = async (id, email, invoiceNumber) => {
+    const confirmed = await confirm({
+      title: 'Send Invoice',
+      message: `Send invoice ${invoiceNumber} to ${email}?`,
+      confirmText: 'Send',
+      cancelText: 'Cancel',
+      type: 'info'
+    });
+    if (!confirmed) return;
     setLoading(prev => ({ ...prev, [id]: 'send' }));
     try {
       const result = await api.sendInvoice(id);
@@ -2065,72 +2820,87 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                 </tr>
               </thead>
               <tbody>
-                {paginatedInvoices.map(inv => (
-                  <tr key={inv.id}>
-                    <td><strong>{inv.invoice_number}</strong></td>
-                    <td>{inv.firm_name}</td>
-                    <td>
-                      <span className={`badge ${inv.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
-                        {inv.plan_type === 'plus' ? 'Plus' : 'Standard'}
-                      </span>
-                    </td>
-                    <td>{formatCurrency(inv.total)}</td>
-                    <td>{formatDate(inv.due_date)}</td>
-                    <td>
-                      <span className={`badge ${inv.status === 'sent' ? 'badge-green' : 'badge-yellow'}`}>
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="action-buttons">
-                        <button
-                          className="action-btn action-btn-pdf"
-                          onClick={() => handleDownload(inv.id, inv.invoice_number, 'pdf')}
-                          disabled={loading[`${inv.id}-pdf`]}
-                          title="Download PDF"
-                        >
-                          {loading[`${inv.id}-pdf`] ? '...' : (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                              <polyline points="14 2 14 8 20 8"/>
-                              <path d="M9 15h6"/>
-                              <path d="M12 18v-6"/>
-                            </svg>
+                {paginatedInvoices.map(inv => {
+                  const dueDateStatus = getDueDateStatus(inv.due_date);
+                  return (
+                    <tr key={inv.id}>
+                      <td><strong>{inv.invoice_number}</strong></td>
+                      <td>{inv.firm_name}</td>
+                      <td>
+                        <span className={`badge ${inv.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
+                          {inv.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                        </span>
+                      </td>
+                      <td>{formatCurrency(inv.total)}</td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span>{formatDate(inv.due_date)}</span>
+                          {inv.status !== 'sent' && dueDateStatus.label && (
+                            <span className={`badge ${dueDateStatus.class}`} style={{ fontSize: '0.65rem' }}>
+                              {dueDateStatus.label}
+                            </span>
                           )}
-                        </button>
-                        <button
-                          className="action-btn action-btn-docx"
-                          onClick={() => handleDownload(inv.id, inv.invoice_number, 'docx')}
-                          disabled={loading[`${inv.id}-docx`]}
-                          title="Download DOCX"
-                        >
-                          {loading[`${inv.id}-docx`] ? '...' : (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                              <polyline points="14 2 14 8 20 8"/>
-                              <line x1="16" y1="13" x2="8" y2="13"/>
-                              <line x1="16" y1="17" x2="8" y2="17"/>
-                              <line x1="10" y1="9" x2="8" y2="9"/>
-                            </svg>
-                          )}
-                        </button>
-                        <button
-                          className="action-btn action-btn-send"
-                          onClick={() => handleSend(inv.id, inv.email)}
-                          disabled={loading[inv.id]}
-                          title="Send via Email"
-                        >
-                          {loading[inv.id] === 'send' ? '...' : (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <line x1="22" y1="2" x2="11" y2="13"/>
-                              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge ${inv.status === 'sent' ? 'badge-green' : 'badge-yellow'}`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="action-buttons">
+                          <Tooltip text="Download as PDF">
+                            <button
+                              className="action-btn action-btn-pdf"
+                              onClick={() => handleDownload(inv.id, inv.invoice_number, 'pdf')}
+                              disabled={loading[`${inv.id}-pdf`]}
+                            >
+                              {loading[`${inv.id}-pdf`] ? '...' : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                  <polyline points="14 2 14 8 20 8"/>
+                                  <path d="M9 15h6"/>
+                                  <path d="M12 18v-6"/>
+                                </svg>
+                              )}
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Download as Word document">
+                            <button
+                              className="action-btn action-btn-docx"
+                              onClick={() => handleDownload(inv.id, inv.invoice_number, 'docx')}
+                              disabled={loading[`${inv.id}-docx`]}
+                            >
+                              {loading[`${inv.id}-docx`] ? '...' : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                  <polyline points="14 2 14 8 20 8"/>
+                                  <line x1="16" y1="13" x2="8" y2="13"/>
+                                  <line x1="16" y1="17" x2="8" y2="17"/>
+                                  <line x1="10" y1="9" x2="8" y2="9"/>
+                                </svg>
+                              )}
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Send invoice via email">
+                            <button
+                              className="action-btn action-btn-send"
+                              onClick={() => handleSend(inv.id, inv.email, inv.invoice_number)}
+                              disabled={loading[inv.id]}
+                            >
+                              {loading[inv.id] === 'send' ? '...' : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <line x1="22" y1="2" x2="11" y2="13"/>
+                                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                                </svg>
+                              )}
+                            </button>
+                          </Tooltip>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -2334,6 +3104,8 @@ function AppContent() {
   const [invoices, setInvoices] = useState([]);
   const [scheduled, setScheduled] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { addToast } = useToast();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -2356,6 +3128,41 @@ function AppContent() {
     loadData();
   }, [loadData]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+N or Cmd+N: Go to Generate tab (new invoice)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        setActiveTab('generate');
+        addToast('Navigated to Generate Invoice', 'info', 2000);
+      }
+      // Ctrl+F or Cmd+F: Go to Firms tab
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !e.shiftKey) {
+        // Only intercept if not in an input/textarea
+        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          setActiveTab('firms');
+          addToast('Navigated to Law Firms', 'info', 2000);
+        }
+      }
+      // Ctrl+H or Cmd+H: Go to History tab
+      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+        e.preventDefault();
+        setActiveTab('history');
+        addToast('Navigated to Invoice History', 'info', 2000);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [addToast]);
+
+  // Close mobile menu when tab changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [activeTab]);
+
   return (
     <div className="app">
       <style>{styles}</style>
@@ -2369,18 +3176,38 @@ function AppContent() {
               <span>Invoice Generator</span>
             </div>
           </div>
-          <nav className="nav">
+          <button
+            className="mobile-menu-btn"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            )}
+          </button>
+          <nav className={`nav ${mobileMenuOpen ? 'nav-open' : ''}`}>
             <button
               className={`nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
               onClick={() => setActiveTab('generate')}
             >
               Generate
+              <span className="shortcut-hint"><span className="shortcut-key">Ctrl</span>+<span className="shortcut-key">N</span></span>
             </button>
             <button
               className={`nav-btn ${activeTab === 'firms' ? 'active' : ''}`}
               onClick={() => setActiveTab('firms')}
             >
               Law Firms
+              <span className="shortcut-hint"><span className="shortcut-key">Ctrl</span>+<span className="shortcut-key">F</span></span>
             </button>
             <button
               className={`nav-btn ${activeTab === 'scheduled' ? 'active' : ''}`}
@@ -2393,6 +3220,7 @@ function AppContent() {
               onClick={() => setActiveTab('history')}
             >
               History
+              <span className="shortcut-hint"><span className="shortcut-key">Ctrl</span>+<span className="shortcut-key">H</span></span>
             </button>
             <button
               className={`nav-btn ${activeTab === 'settings' ? 'active' : ''}`}
@@ -2462,11 +3290,13 @@ function AppContent() {
   );
 }
 
-// Main App with ToastProvider wrapper
+// Main App with ToastProvider and ConfirmProvider wrappers
 function App() {
   return (
     <ToastProvider>
-      <AppContent />
+      <ConfirmProvider>
+        <AppContent />
+      </ConfirmProvider>
     </ToastProvider>
   );
 }
