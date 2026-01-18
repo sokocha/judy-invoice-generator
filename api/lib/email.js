@@ -219,3 +219,65 @@ export const sendAccountantReport = async (csvContent, invoiceCount) => {
   const result = await transporter.sendMail(mailOptions);
   return { success: true, message: `Report sent to ${config.accountant_email}`, messageId: result.messageId };
 };
+
+// Send password reset email
+export const sendPasswordResetEmail = async (email, resetToken, appUrl) => {
+  const config = await db.getEmailConfig();
+
+  if (!config || !config.smtp_host) {
+    throw new Error('Email is not configured. Please configure SMTP settings first.');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: config.smtp_host,
+    port: config.smtp_port || 587,
+    secure: config.smtp_port === 465,
+    auth: {
+      user: config.smtp_user,
+      pass: config.smtp_pass
+    }
+  });
+
+  const resetLink = `${appUrl}/reset-password?token=${resetToken}`;
+
+  const mailOptions = {
+    from: `"${config.from_name || 'JUDY'}" <${config.from_email}>`,
+    to: email,
+    subject: 'Reset Your JUDY Password',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #9C27B0;">Password Reset Request</h2>
+
+        <p>Hello,</p>
+
+        <p>We received a request to reset your password for your JUDY Invoice account.</p>
+
+        <p>Click the button below to reset your password:</p>
+
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetLink}" style="display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
+            Reset Password
+          </a>
+        </div>
+
+        <p>Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #9C27B0;">${resetLink}</p>
+
+        <p><strong>This link will expire in 1 hour.</strong></p>
+
+        <p>If you didn't request a password reset, you can safely ignore this email.</p>
+
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+
+        <p style="color: #718096; font-size: 12px;">
+          JUDY INNOVATIVE TECH LTD<br/>
+          19 Banana Street, East Legon<br/>
+          Accra, Ghana
+        </p>
+      </div>
+    `
+  };
+
+  const result = await transporter.sendMail(mailOptions);
+  return { success: true, messageId: result.messageId };
+};

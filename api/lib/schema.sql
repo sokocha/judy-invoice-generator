@@ -117,8 +117,25 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(255),
+  reset_token VARCHAR(255),
+  reset_token_expires TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add reset token columns if they don't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'reset_token') THEN
+    ALTER TABLE users ADD COLUMN reset_token VARCHAR(255);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'reset_token_expires') THEN
+    ALTER TABLE users ADD COLUMN reset_token_expires TIMESTAMP;
+  END IF;
+END $$;
 
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_invoices_firm_id ON invoices(firm_id);

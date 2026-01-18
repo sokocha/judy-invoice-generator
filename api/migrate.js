@@ -113,6 +113,34 @@ export default async function handler(req, res) {
     `;
     migrations.push('idx_users_email');
 
+    // Add reset_token column if it doesn't exist
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'users' AND column_name = 'reset_token'
+        ) THEN
+          ALTER TABLE users ADD COLUMN reset_token VARCHAR(255);
+        END IF;
+      END $$
+    `;
+    migrations.push('reset_token');
+
+    // Add reset_token_expires column if it doesn't exist
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'users' AND column_name = 'reset_token_expires'
+        ) THEN
+          ALTER TABLE users ADD COLUMN reset_token_expires TIMESTAMP;
+        END IF;
+      END $$
+    `;
+    migrations.push('reset_token_expires');
+
     return res.status(200).json({
       success: true,
       message: `Migration completed: ${migrations.join(', ')} columns processed`

@@ -1783,17 +1783,37 @@ const styles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%);
     padding: 1rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .login-container::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+    animation: pulse 15s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.1); opacity: 0.3; }
   }
 
   .login-card {
     background: white;
-    border-radius: 16px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    border-radius: 20px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
     width: 100%;
-    max-width: 400px;
+    max-width: 420px;
     padding: 2.5rem;
+    position: relative;
+    z-index: 1;
   }
 
   .login-header {
@@ -1805,15 +1825,16 @@ const styles = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 80px;
-    height: 80px;
-    background: #f3e8ff;
+    width: 90px;
+    height: 90px;
+    background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
     border-radius: 50%;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 8px 20px rgba(156, 39, 176, 0.2);
   }
 
   .login-title {
-    font-size: 1.75rem;
+    font-size: 1.875rem;
     font-weight: 700;
     color: #1a202c;
     margin-bottom: 0.5rem;
@@ -1830,14 +1851,43 @@ const styles = `
     gap: 1.25rem;
   }
 
+  .login-form .form-group label {
+    color: #4a5568;
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  .login-form .form-group input {
+    border: 2px solid #e2e8f0;
+    padding: 0.875rem 1rem;
+    font-size: 1rem;
+    transition: all 0.2s;
+  }
+
+  .login-form .form-group input:focus {
+    border-color: #9C27B0;
+    box-shadow: 0 0 0 3px rgba(156, 39, 176, 0.1);
+  }
+
   .login-error {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
+    padding: 0.875rem 1rem;
     background: #fee2e2;
     color: #dc2626;
-    border-radius: 8px;
+    border-radius: 10px;
+    font-size: 0.875rem;
+  }
+
+  .login-success {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    background: #dcfce7;
+    color: #16a34a;
+    border-radius: 10px;
     font-size: 0.875rem;
   }
 
@@ -1847,11 +1897,11 @@ const styles = `
     justify-content: center;
     gap: 0.5rem;
     width: 100%;
-    padding: 0.875rem;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 1rem;
+    background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%);
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
@@ -1860,8 +1910,8 @@ const styles = `
   }
 
   .login-btn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(156, 39, 176, 0.4);
   }
 
   .login-btn:disabled {
@@ -1869,11 +1919,50 @@ const styles = `
     cursor: not-allowed;
   }
 
+  .login-btn-secondary {
+    background: transparent;
+    color: #9C27B0;
+    border: 2px solid #9C27B0;
+    margin-top: 0.75rem;
+  }
+
+  .login-btn-secondary:hover:not(:disabled) {
+    background: rgba(156, 39, 176, 0.05);
+    box-shadow: none;
+    transform: none;
+  }
+
+  .login-link {
+    text-align: center;
+    margin-top: 1rem;
+  }
+
+  .login-link button {
+    background: none;
+    border: none;
+    color: #9C27B0;
+    font-size: 0.875rem;
+    cursor: pointer;
+    text-decoration: underline;
+    font-weight: 500;
+  }
+
+  .login-link button:hover {
+    color: #7B1FA2;
+  }
+
   .login-footer {
     margin-top: 2rem;
     text-align: center;
     color: #a0aec0;
     font-size: 0.875rem;
+  }
+
+  .login-footer p {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
   }
 
   /* User menu in sidebar */
@@ -4466,13 +4555,25 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
 
 // Login Page
 function LoginPage() {
+  const [view, setView] = useState('login'); // 'login', 'forgot', 'reset'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
-  const handleSubmit = async (e) => {
+  // Check for reset token in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      setView('reset');
+    }
+  }, []);
+
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -4485,74 +4586,314 @@ function LoginPage() {
     setLoading(false);
   };
 
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth?action=forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, appUrl: window.location.origin })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSuccess(data.message);
+        setEmail('');
+      } else {
+        setError(data.error || 'Failed to send reset email');
+      }
+    } catch (err) {
+      setError('Failed to send reset email. Please try again.');
+    }
+    setLoading(false);
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+
+      const response = await fetch(`${API_URL}/api/auth?action=reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSuccess(data.message);
+        setPassword('');
+        setConfirmPassword('');
+        // Clear the token from URL and redirect to login after delay
+        setTimeout(() => {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setView('login');
+          setSuccess('');
+        }, 3000);
+      } else {
+        setError(data.error || 'Failed to reset password');
+      }
+    } catch (err) {
+      setError('Failed to reset password. Please try again.');
+    }
+    setLoading(false);
+  };
+
+  const renderLoginForm = () => (
+    <>
+      <div className="login-header">
+        <div className="login-logo">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9C27B0" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </div>
+        <h1 className="login-title">JUDY Invoice</h1>
+        <p className="login-subtitle">Sign in to manage invoices</p>
+      </div>
+
+      <form onSubmit={handleLogin} className="login-form">
+        {error && (
+          <div className="login-error">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            {error}
+          </div>
+        )}
+
+        <div className="form-group">
+          <label>Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter your email"
+            required
+            autoFocus
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            required
+          />
+        </div>
+
+        <button type="submit" className="login-btn" disabled={loading}>
+          {loading ? (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+              Signing in...
+            </>
+          ) : (
+            'Sign In'
+          )}
+        </button>
+
+        <div className="login-link">
+          <button type="button" onClick={() => { setView('forgot'); setError(''); setSuccess(''); }}>
+            Forgot your password?
+          </button>
+        </div>
+      </form>
+    </>
+  );
+
+  const renderForgotForm = () => (
+    <>
+      <div className="login-header">
+        <div className="login-logo">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9C27B0" strokeWidth="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <h1 className="login-title">Reset Password</h1>
+        <p className="login-subtitle">Enter your email to receive a reset link</p>
+      </div>
+
+      <form onSubmit={handleForgotPassword} className="login-form">
+        {error && (
+          <div className="login-error">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="login-success">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="9 12 12 15 16 10"/>
+            </svg>
+            {success}
+          </div>
+        )}
+
+        <div className="form-group">
+          <label>Email Address</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter your email"
+            required
+            autoFocus
+          />
+        </div>
+
+        <button type="submit" className="login-btn" disabled={loading}>
+          {loading ? (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+              Sending...
+            </>
+          ) : (
+            'Send Reset Link'
+          )}
+        </button>
+
+        <button
+          type="button"
+          className="login-btn login-btn-secondary"
+          onClick={() => { setView('login'); setError(''); setSuccess(''); }}
+        >
+          Back to Login
+        </button>
+      </form>
+    </>
+  );
+
+  const renderResetForm = () => (
+    <>
+      <div className="login-header">
+        <div className="login-logo">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9C27B0" strokeWidth="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <h1 className="login-title">New Password</h1>
+        <p className="login-subtitle">Enter your new password</p>
+      </div>
+
+      <form onSubmit={handleResetPassword} className="login-form">
+        {error && (
+          <div className="login-error">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="login-success">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="9 12 12 15 16 10"/>
+            </svg>
+            {success}
+          </div>
+        )}
+
+        <div className="form-group">
+          <label>New Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter new password"
+            required
+            autoFocus
+            minLength={6}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Confirm Password</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm new password"
+            required
+            minLength={6}
+          />
+        </div>
+
+        <button type="submit" className="login-btn" disabled={loading || success}>
+          {loading ? (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+              Resetting...
+            </>
+          ) : (
+            'Reset Password'
+          )}
+        </button>
+      </form>
+    </>
+  );
+
   return (
     <div className="login-container">
       <div className="login-card">
-        <div className="login-header">
-          <div className="login-logo">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9C27B0" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
-            </svg>
-          </div>
-          <h1 className="login-title">JUDY Invoice</h1>
-          <p className="login-subtitle">Sign in to manage invoices</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="login-form">
-          {error && (
-            <div className="login-error">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-              {error}
-            </div>
-          )}
-
-          <div className="form-group">
-            <label>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              required
-              autoFocus
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              required
-            />
-          </div>
-
-          <button type="submit" className="login-btn" disabled={loading}>
-            {loading ? (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                </svg>
-                Signing in...
-              </>
-            ) : (
-              'Sign In'
-            )}
-          </button>
-        </form>
+        {view === 'login' && renderLoginForm()}
+        {view === 'forgot' && renderForgotForm()}
+        {view === 'reset' && renderResetForm()}
 
         <div className="login-footer">
-          <p>JUDY Invoice Generator</p>
+          <p>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            JUDY Invoice Generator
+          </p>
         </div>
       </div>
     </div>

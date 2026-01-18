@@ -249,3 +249,32 @@ export async function createUser(user) {
   `;
   return rows[0];
 }
+
+export async function setUserResetToken(email, token, expires) {
+  await sql`
+    UPDATE users
+    SET reset_token = ${token}, reset_token_expires = ${expires}
+    WHERE email = ${email.toLowerCase()}
+  `;
+}
+
+export async function getUserByResetToken(token) {
+  const rows = await sql`
+    SELECT * FROM users WHERE reset_token = ${token} AND reset_token_expires > NOW()
+  `;
+  return rows[0] || null;
+}
+
+export async function updateUserPassword(id, passwordHash) {
+  await sql`
+    UPDATE users
+    SET password_hash = ${passwordHash}, reset_token = NULL, reset_token_expires = NULL
+    WHERE id = ${id}
+  `;
+}
+
+export async function clearUserResetToken(id) {
+  await sql`
+    UPDATE users SET reset_token = NULL, reset_token_expires = NULL WHERE id = ${id}
+  `;
+}

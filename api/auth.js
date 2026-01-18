@@ -1,5 +1,7 @@
 import * as db from './lib/db.js';
 import { hashPassword, verifyPassword, generateToken, authenticate } from './lib/auth.js';
+import { sendPasswordResetEmail } from './lib/email.js';
+import crypto from 'crypto';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -88,6 +90,73 @@ export default async function handler(req, res) {
       return res.status(201).json({
         message: 'User created successfully',
         user: newUser
+      });
+    }
+
+    // POST /api/auth?action=forgot-password - Request password reset
+    if (req.method === 'POST' && action === 'forgot-password') {
+      const { email, appUrl } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+
+      const user = await db.getUserByEmail(email);
+
+      // Always return success to prevent email enumeration
+      if (!user) {
+        return res.status(200).json({
+          success: true,
+          message: 'If an account with that email exists, a password reset link has been sent.'
+        });
+      }
+
+      // Generate reset token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+      // Save token to database
+      await db.setUserResetToken(email, resetToken, tokenExpires.toISOString());
+
+      // Send email
+      try {
+        await sendPasswordResetEmail(email, resetToken, appUrl || 'https://invoice.judy.legal');
+      } catch (emailError) {
+        console.error('Failed to send reset email:', emailError);
+        return res.status(500).json({ error: 'Failed to send reset email. Please try again.' });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.'
+      });
+    }
+
+    // POST /api/auth?action=reset-password - Reset password with token
+    if (req.method === 'POST' && action === 'reset-password') {
+      const { token, password } = req.body;
+
+      if (!token || !password) {
+        return res.status(400).json({ error: 'Token and new password are required' });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+
+      const user = await db.getUserByResetToken(token);
+
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid or expired reset token' });
+      }
+
+      // Hash new password and update
+      const passwordHash = await hashPassword(password);
+      await db.updateUserPassword(user.id, passwordHash);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Password has been reset successfully. You can now log in with your new password.'
       });
     }
 
