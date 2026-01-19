@@ -14,12 +14,15 @@ function ConfirmProvider({ children }) {
     confirmText: 'Confirm',
     cancelText: 'Cancel',
     type: 'warning', // 'warning', 'danger', 'info'
+    requireInput: null, // If set, user must type this exact text to confirm
     onConfirm: () => {},
     onCancel: () => {}
   });
+  const [inputValue, setInputValue] = useState('');
 
-  const confirm = useCallback(({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning' }) => {
+  const confirm = useCallback(({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning', requireInput = null }) => {
     return new Promise((resolve) => {
+      setInputValue('');
       setConfirmState({
         isOpen: true,
         title,
@@ -27,17 +30,22 @@ function ConfirmProvider({ children }) {
         confirmText,
         cancelText,
         type,
+        requireInput,
         onConfirm: () => {
           setConfirmState(prev => ({ ...prev, isOpen: false }));
+          setInputValue('');
           resolve(true);
         },
         onCancel: () => {
           setConfirmState(prev => ({ ...prev, isOpen: false }));
+          setInputValue('');
           resolve(false);
         }
       });
     });
   }, []);
+
+  const isConfirmDisabled = confirmState.requireInput && inputValue !== confirmState.requireInput;
 
   return (
     <ConfirmContext.Provider value={{ confirm }}>
@@ -70,6 +78,28 @@ function ConfirmProvider({ children }) {
             </div>
             <h3 className="confirm-title">{confirmState.title}</h3>
             <p className="confirm-message">{confirmState.message}</p>
+            {confirmState.requireInput && (
+              <div style={{ marginTop: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                  Type <strong style={{ color: '#dc2626' }}>{confirmState.requireInput}</strong> to confirm:
+                </label>
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder={confirmState.requireInput}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '0.875rem',
+                    boxSizing: 'border-box'
+                  }}
+                  autoFocus
+                />
+              </div>
+            )}
             <div className="confirm-actions">
               <button className="btn btn-secondary" onClick={confirmState.onCancel}>
                 {confirmState.cancelText}
@@ -77,6 +107,8 @@ function ConfirmProvider({ children }) {
               <button
                 className={`btn ${confirmState.type === 'danger' ? 'btn-danger' : 'btn-primary'}`}
                 onClick={confirmState.onConfirm}
+                disabled={isConfirmDisabled}
+                style={isConfirmDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
               >
                 {confirmState.confirmText}
               </button>
@@ -2813,10 +2845,11 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   const handleDelete = async (id, firmName) => {
     const confirmed = await confirm({
       title: 'Delete Law Firm',
-      message: `Are you sure you want to delete "${firmName}"? This action cannot be undone.`,
+      message: `Are you sure you want to delete "${firmName}"? This will permanently remove the firm and cannot be undone.`,
       confirmText: 'Delete',
       cancelText: 'Cancel',
-      type: 'danger'
+      type: 'danger',
+      requireInput: firmName
     });
     if (!confirmed) return;
     try {
