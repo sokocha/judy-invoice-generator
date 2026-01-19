@@ -148,7 +148,7 @@ export async function getScheduledInvoiceById(id) {
 
 export async function getAllScheduledInvoices() {
   const rows = await sql`
-    SELECT s.*, f.firm_name, f.email
+    SELECT s.*, f.firm_name, f.email, f.subscription_end
     FROM scheduled_invoices s
     LEFT JOIN law_firms f ON s.firm_id = f.id
     ORDER BY s.schedule_date ASC

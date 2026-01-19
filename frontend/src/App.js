@@ -2908,11 +2908,11 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               <thead>
                 <tr>
                   <th>Firm Name</th>
-                  <th>Address</th>
-                  <th>Email</th>
                   <th>Plan</th>
                   <th>Users</th>
                   <th>Subscription End</th>
+                  <th>Address</th>
+                  <th>Email</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -2923,6 +2923,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                     ref={el => firmRowRefs.current[firm.id] = el}
                     className={highlightFirmIds.includes(firm.id) ? 'highlight-row' : ''}
                   >
+                    {/* Firm Name */}
                     <td>
                       {inlineEdit.id === firm.id && inlineEdit.field === 'firm_name' ? (
                         <div className="inline-edit-cell">
@@ -2960,7 +2961,31 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                         </strong>
                       )}
                     </td>
+                    {/* Plan */}
+                    <td>
+                      <span className={`badge ${firm.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
+                        {firm.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                      </span>
+                    </td>
+                    {/* Users */}
+                    <td>{firm.num_users}</td>
+                    {/* Subscription End */}
+                    <td>
+                      {(() => {
+                        const subStatus = getSubscriptionStatus(firm.subscription_end);
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <span>{formatDate(firm.subscription_end)}</span>
+                            <span className={`badge ${subStatus.class}`} style={{ fontSize: '0.65rem' }}>
+                              {subStatus.label}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    {/* Address */}
                     <td>{firm.street_address}, {firm.city}</td>
+                    {/* Email */}
                     <td>
                       {inlineEdit.id === firm.id && inlineEdit.field === 'email' ? (
                         <div className="inline-edit-cell">
@@ -2999,25 +3024,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                         </span>
                       )}
                     </td>
-                    <td>
-                      <span className={`badge ${firm.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
-                        {firm.plan_type === 'plus' ? 'Plus' : 'Standard'}
-                      </span>
-                    </td>
-                    <td>{firm.num_users}</td>
-                    <td>
-                      {(() => {
-                        const subStatus = getSubscriptionStatus(firm.subscription_end);
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <span>{formatDate(firm.subscription_end)}</span>
-                            <span className={`badge ${subStatus.class}`} style={{ fontSize: '0.65rem' }}>
-                              {subStatus.label}
-                            </span>
-                          </div>
-                        );
-                      })()}
-                    </td>
+                    {/* Actions */}
                     <td>
                       <div className="action-buttons">
                         <Tooltip text="Edit all firm details">
@@ -4017,6 +4024,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 <tr>
                   <th>Firm</th>
                   <th>Scheduled For</th>
+                  <th>Subscription End</th>
                   <th>Plan</th>
                   <th>Duration</th>
                   <th>Users</th>
@@ -4035,6 +4043,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                         <span style={{ fontSize: '0.75rem', color: '#64748b' }}>at 8:00 AM GMT</span>
                       </div>
                     </td>
+                    <td>{formatDate(item.subscription_end)}</td>
                     <td>
                       <span className={`badge ${item.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
                         {item.plan_type === 'plus' ? 'Plus' : 'Standard'}
