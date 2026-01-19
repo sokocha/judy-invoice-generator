@@ -45,7 +45,7 @@ function ConfirmProvider({ children }) {
     });
   }, []);
 
-  const isConfirmDisabled = confirmState.requireInput && inputValue !== confirmState.requireInput;
+  const isConfirmDisabled = confirmState.requireInput && inputValue.trim() !== confirmState.requireInput.trim();
 
   return (
     <ConfirmContext.Provider value={{ confirm }}>
