@@ -620,6 +620,7 @@ const styles = `
     background: #d1fae5;
     color: #047857;
     border: 1px solid #10b981;
+    width: fit-content;
   }
 
   @keyframes statusPulse {
@@ -5428,8 +5429,11 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
               <div className="dashboard-alert-content">
                 <strong>{expiringFirms.length} Subscription{expiringFirms.length > 1 ? 's' : ''} Expiring Soon</strong>
                 <p>
-                  {expiringFirms.slice(0, 3).map(f => f.firm_name).join(', ')}
-                  {expiringFirms.length > 3 && ` and ${expiringFirms.length - 3} more`}
+                  {expiringFirms.slice(0, 5).map(f => {
+                    const status = getSubscriptionStatus(f.subscription_end);
+                    return `${f.firm_name} (${status.days <= 0 ? 'expired' : status.days + 'd'})`;
+                  }).join(', ')}
+                  {expiringFirms.length > 5 && ` and ${expiringFirms.length - 5} more`}
                 </p>
               </div>
               <button className="btn btn-sm btn-secondary" onClick={() => onNavigateToFirmsWithHighlight(expiringFirms.map(f => f.id))}>
