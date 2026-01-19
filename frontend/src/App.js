@@ -587,6 +587,7 @@ const styles = `
     border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 500;
+    width: fit-content;
   }
   
   .badge-blue {
@@ -620,7 +621,6 @@ const styles = `
     background: #d1fae5;
     color: #047857;
     border: 1px solid #10b981;
-    width: fit-content;
   }
 
   @keyframes statusPulse {
@@ -2911,7 +2911,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                   <th>Firm Name</th>
                   <th>Plan</th>
                   <th>Users</th>
-                  <th>Subscription End</th>
+                  <th style={{ minWidth: '140px' }}>Subscription End</th>
                   <th>Address</th>
                   <th>Email</th>
                   <th>Actions</th>
@@ -4025,7 +4025,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 <tr>
                   <th>Firm</th>
                   <th>Scheduled For</th>
-                  <th>Subscription End</th>
+                  <th style={{ minWidth: '140px' }}>Subscription End</th>
                   <th>Plan</th>
                   <th>Duration</th>
                   <th>Users</th>
