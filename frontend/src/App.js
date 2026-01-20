@@ -5456,14 +5456,23 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
   const paidInvoices = invoices.filter(i => i.status === 'paid');
   const pendingScheduled = scheduled.filter(s => s.status === 'pending');
 
-  // Overdue invoices (sent but past due date and not paid)
+  // Overdue invoices (sent more than 7 days ago, past due date, and not paid)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const overdueInvoices = sentInvoices.filter(inv => {
-    if (!inv.due_date) return false;
+    if (!inv.due_date || !inv.sent_at) return false;
     const dueDate = new Date(inv.due_date);
     dueDate.setHours(0, 0, 0, 0);
-    return dueDate < today;
+    const sentDate = new Date(inv.sent_at);
+    sentDate.setHours(0, 0, 0, 0);
+    const daysSinceSent = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));
+    // Only consider overdue if past due date AND sent more than 7 days ago
+    return dueDate < today && daysSinceSent >= 7;
+  }).map(inv => {
+    const sentDate = new Date(inv.sent_at);
+    sentDate.setHours(0, 0, 0, 0);
+    const daysSinceSent = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));
+    return { ...inv, daysSinceSent };
   });
 
   // Firms with expiring subscriptions (within 30 days or expired)
@@ -5626,7 +5635,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
               <div className="dashboard-alert-content">
                 <strong>{overdueInvoices.length} Overdue Invoice{overdueInvoices.length > 1 ? 's' : ''}</strong>
                 <p>
-                  {overdueInvoices.slice(0, 3).map(inv => inv.firm_name).join(', ')}
+                  {overdueInvoices.slice(0, 3).map(inv => `${inv.firm_name} (${inv.daysSinceSent}d ago)`).join(', ')}
                   {overdueInvoices.length > 3 && ` and ${overdueInvoices.length - 3} more`}
                 </p>
               </div>
