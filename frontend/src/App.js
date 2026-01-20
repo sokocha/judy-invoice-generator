@@ -5434,7 +5434,80 @@ function LoginPage() {
 }
 
 // Dashboard Section
-function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateToFirmsWithHighlight }) {
+function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateToFirmsWithHighlight, onRefresh }) {
+  const { addToast } = useToast();
+  const confirm = useConfirm();
+
+  // Edit draft invoice state
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [editForm, setEditForm] = useState({
+    planType: 'standard',
+    duration: '1 Year',
+    numUsers: 1,
+    baseAmount: '',
+    dueDate: ''
+  });
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [loading, setLoading] = useState({});
+
+  const handleEditDraft = (invoice) => {
+    setEditForm({
+      planType: invoice.plan_type,
+      duration: invoice.duration,
+      numUsers: invoice.num_users,
+      baseAmount: invoice.base_amount,
+      dueDate: invoice.due_date ? invoice.due_date.split('T')[0] : ''
+    });
+    setEditingInvoice(invoice);
+  };
+
+  const handleUpdateDraft = async () => {
+    if (!editingInvoice) return;
+    setIsUpdating(true);
+    try {
+      const result = await api.updateDraftInvoice(editingInvoice.id, editForm);
+      if (result.error) throw new Error(result.error);
+      addToast(`Invoice ${editingInvoice.invoice_number} updated`, 'success');
+      setEditingInvoice(null);
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setIsUpdating(false);
+  };
+
+  const handleDeleteDraft = async (invoice) => {
+    const confirmed = await confirm({
+      title: 'Delete Draft Invoice',
+      message: `Are you sure you want to delete invoice ${invoice.invoice_number}? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      type: 'danger'
+    });
+    if (!confirmed) return;
+
+    setLoading(prev => ({ ...prev, [`delete-${invoice.id}`]: true }));
+    try {
+      const result = await api.deleteInvoice(invoice.id);
+      if (result.error) throw new Error(result.error);
+      addToast(`Invoice ${invoice.invoice_number} deleted`, 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`delete-${invoice.id}`]: false }));
+  };
+
+  // Calculate preview amounts for edit form
+  const editPreviewAmounts = (() => {
+    const base = Number(editForm.baseAmount) || 0;
+    const gtfl = base * 0.025;
+    const nihl = base * 0.025;
+    const vat = base * 0.15;
+    const total = base + gtfl + nihl + vat;
+    return { base, gtfl, nihl, vat, total };
+  })();
+
   // Exchange rate (approximate - in production this would be fetched from an API)
   const GHS_TO_USD = 0.063; // 1 GHS ≈ 0.063 USD
 
@@ -5489,6 +5562,114 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
   const outstandingRevenue = sentInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
 
   return (
+    <>
+      {/* Edit Draft Invoice Modal */}
+      {editingInvoice && (
+        <div className="modal-overlay" onClick={() => setEditingInvoice(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h3>Edit Draft Invoice</h3>
+              <button className="modal-close" onClick={() => setEditingInvoice(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f3f4f6', borderRadius: '0.5rem' }}>
+                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Invoice</div>
+                <div style={{ fontWeight: '600' }}>{editingInvoice.invoice_number}</div>
+                <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>{editingInvoice.firm_name}</div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Plan Type</label>
+                <select
+                  className="form-select"
+                  value={editForm.planType}
+                  onChange={(e) => setEditForm({ ...editForm, planType: e.target.value })}
+                >
+                  <option value="standard">Standard</option>
+                  <option value="plus">Plus</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Duration</label>
+                <select
+                  className="form-select"
+                  value={editForm.duration}
+                  onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })}
+                >
+                  <option value="1 Month">1 Month</option>
+                  <option value="3 Months">3 Months</option>
+                  <option value="6 Months">6 Months</option>
+                  <option value="1 Year">1 Year</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Number of Users</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="1"
+                  value={editForm.numUsers}
+                  onChange={(e) => setEditForm({ ...editForm, numUsers: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Base Amount (GHS)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  step="0.01"
+                  value={editForm.baseAmount}
+                  onChange={(e) => setEditForm({ ...editForm, baseAmount: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Due Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={editForm.dueDate}
+                  onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
+                />
+              </div>
+
+              {/* Price Preview */}
+              <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bae6fd' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0369a1', marginBottom: '0.5rem' }}>PRICE BREAKDOWN</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                  <span>Base Amount:</span>
+                  <span>GHS {editPreviewAmounts.base.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#6b7280' }}>
+                  <span>GTFL (2.5%):</span>
+                  <span>GHS {editPreviewAmounts.gtfl.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#6b7280' }}>
+                  <span>NIHL (2.5%):</span>
+                  <span>GHS {editPreviewAmounts.nihl.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#6b7280' }}>
+                  <span>VAT (15%):</span>
+                  <span>GHS {editPreviewAmounts.vat.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', fontWeight: '600', borderTop: '1px solid #bae6fd', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
+                  <span>Total:</span>
+                  <span>GHS {editPreviewAmounts.total.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setEditingInvoice(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleUpdateDraft} disabled={isUpdating}>
+                {isUpdating ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     <div className="dashboard">
       {/* Quick Stats */}
       <div className="dashboard-stats-grid">
@@ -5694,6 +5875,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
                   <th>Amount</th>
                   <th>Status</th>
                   <th>Date</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -5712,6 +5894,41 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
                       </span>
                     </td>
                     <td>{formatDate(inv.created_at)}</td>
+                    <td>
+                      {inv.status === 'draft' ? (
+                        <div className="action-buttons">
+                          <Tooltip text="Edit draft">
+                            <button
+                              className="action-btn action-btn-edit"
+                              onClick={() => handleEditDraft(inv)}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Delete draft">
+                            <button
+                              className="action-btn action-btn-delete"
+                              onClick={() => handleDeleteDraft(inv)}
+                              disabled={loading[`delete-${inv.id}`]}
+                            >
+                              {loading[`delete-${inv.id}`] ? '...' : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <polyline points="3 6 5 6 21 6"/>
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                  <line x1="10" y1="11" x2="10" y2="17"/>
+                                  <line x1="14" y1="11" x2="14" y2="17"/>
+                                </svg>
+                              )}
+                            </button>
+                          </Tooltip>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -5720,6 +5937,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -6118,6 +6336,7 @@ function AppContent() {
                 scheduled={scheduled}
                 onNavigate={setActiveTab}
                 onNavigateToFirmsWithHighlight={navigateToFirmsWithHighlight}
+                onRefresh={loadData}
               />
             )}
             {activeTab === 'generate' && (
