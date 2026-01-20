@@ -46,7 +46,8 @@ export const generateInvoice = async (invoiceData) => {
     numUsers,
     baseAmount,
     dueDate,
-    invoiceNumber
+    invoiceNumber,
+    additionalEmails
   } = invoiceData;
 
   // Get firm details
@@ -129,7 +130,8 @@ export const generateInvoice = async (invoiceData) => {
     vat: amounts.vat,
     total: amounts.total,
     due_date: dueDate,
-    status: 'draft'
+    status: 'draft',
+    additional_emails: additionalEmails ? additionalEmails.join(',') : null
   });
 
   return {

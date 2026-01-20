@@ -3363,7 +3363,10 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     }
     setLoadingAction(format);
     try {
-      const { blob, invoiceNumber } = await api.generateInvoice(formData, format);
+      const { blob, invoiceNumber } = await api.generateInvoice({
+        ...formData,
+        additionalEmails: additionalEmails
+      }, format);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -4455,18 +4458,27 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setLoading(prev => ({ ...prev, [`${id}-${format}`]: false }));
   };
 
-  const handleSend = async (id, email, invoiceNumber) => {
+  const handleSend = async (invoice) => {
+    // Build full recipient list from firm email, firm CC emails, and invoice additional emails
+    const firmCcEmails = invoice.cc_emails
+      ? invoice.cc_emails.split(',').map(e => e.trim()).filter(e => e)
+      : [];
+    const additionalEmails = invoice.additional_emails
+      ? invoice.additional_emails.split(',').map(e => e.trim()).filter(e => e)
+      : [];
+    const allRecipients = [...new Set([invoice.email, ...firmCcEmails, ...additionalEmails])].filter(Boolean);
+
     const confirmed = await confirm({
       title: 'Send Invoice',
-      message: `Send invoice ${invoiceNumber} to ${email}?`,
+      message: `Send invoice ${invoice.invoice_number} to:\n\n${allRecipients.join('\n')}`,
       confirmText: 'Send',
       cancelText: 'Cancel',
       type: 'info'
     });
     if (!confirmed) return;
-    setLoading(prev => ({ ...prev, [id]: 'send' }));
+    setLoading(prev => ({ ...prev, [invoice.id]: 'send' }));
     try {
-      const result = await api.sendInvoice(id);
+      const result = await api.sendInvoice(invoice.id);
       if (result.error) throw new Error(result.error);
       // Show success animation
       setShowSuccessAnimation(true);
@@ -4476,7 +4488,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     } catch (error) {
       addToast(error.message, 'error');
     }
-    setLoading(prev => ({ ...prev, [id]: null }));
+    setLoading(prev => ({ ...prev, [invoice.id]: null }));
   };
 
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -4991,7 +5003,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                           <Tooltip text="Send invoice via email">
                             <button
                               className="action-btn action-btn-send"
-                              onClick={() => handleSend(inv.id, inv.email, inv.invoice_number)}
+                              onClick={() => handleSend(inv)}
                               disabled={loading[inv.id]}
                             >
                               {loading[inv.id] === 'send' ? '...' : (

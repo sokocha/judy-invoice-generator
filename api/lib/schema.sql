@@ -69,8 +69,17 @@ CREATE TABLE IF NOT EXISTS invoices (
   due_date DATE,
   status VARCHAR(20) DEFAULT 'draft',
   sent_at TIMESTAMP,
+  additional_emails TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add additional_emails column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'additional_emails') THEN
+    ALTER TABLE invoices ADD COLUMN additional_emails TEXT;
+  END IF;
+END $$;
 
 -- Scheduled Invoices table
 CREATE TABLE IF NOT EXISTS scheduled_invoices (

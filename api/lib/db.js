@@ -57,7 +57,7 @@ export async function deleteFirm(id) {
 // Invoices
 export async function getAllInvoices() {
   const rows = await sql`
-    SELECT i.*, f.firm_name, f.email
+    SELECT i.*, f.firm_name, f.email, f.cc_emails
     FROM invoices i
     LEFT JOIN law_firms f ON i.firm_id = f.id
     ORDER BY i.created_at DESC
@@ -87,8 +87,8 @@ export async function getInvoiceByNumber(invoiceNumber) {
 
 export async function createInvoice(invoice) {
   const rows = await sql`
-    INSERT INTO invoices (invoice_number, firm_id, plan_type, duration, num_users, base_amount, subtotal, gtfl, nihl, vat, total, due_date, status)
-    VALUES (${invoice.invoice_number}, ${invoice.firm_id}, ${invoice.plan_type}, ${invoice.duration}, ${invoice.num_users}, ${invoice.base_amount}, ${invoice.subtotal}, ${invoice.gtfl}, ${invoice.nihl}, ${invoice.vat}, ${invoice.total}, ${invoice.due_date}, ${invoice.status || 'draft'})
+    INSERT INTO invoices (invoice_number, firm_id, plan_type, duration, num_users, base_amount, subtotal, gtfl, nihl, vat, total, due_date, status, additional_emails)
+    VALUES (${invoice.invoice_number}, ${invoice.firm_id}, ${invoice.plan_type}, ${invoice.duration}, ${invoice.num_users}, ${invoice.base_amount}, ${invoice.subtotal}, ${invoice.gtfl}, ${invoice.nihl}, ${invoice.vat}, ${invoice.total}, ${invoice.due_date}, ${invoice.status || 'draft'}, ${invoice.additional_emails || null})
     RETURNING *
   `;
   return rows[0];
