@@ -86,6 +86,15 @@ export async function getInvoiceByNumber(invoiceNumber) {
 }
 
 export async function createInvoice(invoice) {
+  // Check if additional_emails column exists, add it if not
+  try {
+    await sql`
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS additional_emails TEXT
+    `;
+  } catch (e) {
+    // Column might already exist or DB doesn't support IF NOT EXISTS
+  }
+
   const rows = await sql`
     INSERT INTO invoices (invoice_number, firm_id, plan_type, duration, num_users, base_amount, subtotal, gtfl, nihl, vat, total, due_date, status, additional_emails)
     VALUES (${invoice.invoice_number}, ${invoice.firm_id}, ${invoice.plan_type}, ${invoice.duration}, ${invoice.num_users}, ${invoice.base_amount}, ${invoice.subtotal}, ${invoice.gtfl}, ${invoice.nihl}, ${invoice.vat}, ${invoice.total}, ${invoice.due_date}, ${invoice.status || 'draft'}, ${invoice.additional_emails || null})
