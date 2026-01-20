@@ -102,6 +102,26 @@ export async function updateInvoiceStatus(id, status, sentAt = null) {
   }
 }
 
+export async function updateDraftInvoice(id, updates) {
+  const { plan_type, duration, num_users, base_amount, subtotal, gtfl, nihl, vat, total, due_date } = updates;
+  const rows = await sql`
+    UPDATE invoices
+    SET plan_type = ${plan_type},
+        duration = ${duration},
+        num_users = ${num_users},
+        base_amount = ${base_amount},
+        subtotal = ${subtotal},
+        gtfl = ${gtfl},
+        nihl = ${nihl},
+        vat = ${vat},
+        total = ${total},
+        due_date = ${due_date}
+    WHERE id = ${id} AND status = 'draft'
+    RETURNING *
+  `;
+  return rows[0] || null;
+}
+
 export async function deleteInvoice(id) {
   await sql`DELETE FROM invoices WHERE id = ${id}`;
   return { success: true };

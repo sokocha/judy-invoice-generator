@@ -149,6 +149,39 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: 'Invoice marked as unpaid' });
     }
 
+    // POST /api/invoices?action=update-draft&id=123 - Update draft invoice
+    if (req.method === 'POST' && action === 'update-draft' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      if (invoice.status !== 'draft') {
+        return res.status(400).json({ error: 'Only draft invoices can be edited' });
+      }
+
+      const { calculateAmounts } = await import('./lib/invoice.js');
+      const amounts = calculateAmounts(req.body.baseAmount);
+
+      const updated = await db.updateDraftInvoice(id, {
+        plan_type: req.body.planType,
+        duration: req.body.duration,
+        num_users: req.body.numUsers,
+        base_amount: req.body.baseAmount,
+        subtotal: amounts.subtotal,
+        gtfl: amounts.gtfl,
+        nihl: amounts.nihl,
+        vat: amounts.vat,
+        total: amounts.total,
+        due_date: req.body.dueDate
+      });
+
+      if (!updated) {
+        return res.status(400).json({ error: 'Failed to update invoice' });
+      }
+
+      return res.status(200).json({ success: true, invoice: updated });
+    }
+
     // DELETE /api/invoices?id=123 - Delete single invoice
     if (req.method === 'DELETE' && id) {
       const invoice = await db.getInvoiceById(id);
