@@ -5280,10 +5280,10 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
     return dueDate < today;
   });
 
-  // Firms with expiring subscriptions (within 30 days)
+  // Firms with expiring subscriptions (within 30 days or expired)
   const expiringFirms = firms.filter(firm => {
     const status = getSubscriptionStatus(firm.subscription_end);
-    return status.status === 'expiring' || status.status === 'expired';
+    return status.status === 'expiring' || status.status === 'critical' || status.status === 'expired';
   });
 
   // Revenue calculations
