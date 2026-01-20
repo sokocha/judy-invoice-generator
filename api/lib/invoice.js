@@ -131,7 +131,7 @@ export const generateInvoice = async (invoiceData) => {
     total: amounts.total,
     due_date: dueDate,
     status: 'draft',
-    additional_emails: additionalEmails ? additionalEmails.join(',') : null
+    additional_emails: Array.isArray(additionalEmails) && additionalEmails.length > 0 ? additionalEmails.join(',') : null
   });
 
   return {
