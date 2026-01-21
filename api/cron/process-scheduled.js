@@ -1,5 +1,5 @@
 import * as db from '../lib/db.js';
-import { generateInvoice } from '../lib/invoice.js';
+import { generateInvoicePDF } from '../lib/invoice.js';
 import { sendInvoiceEmail } from '../lib/email.js';
 
 export default async function handler(req, res) {
@@ -41,8 +41,8 @@ async function processScheduledInvoices() {
       // Due date is the scheduled date (when the invoice was meant to be sent)
       const dueDate = new Date(scheduled.schedule_date);
 
-      // Generate invoice
-      const result = await generateInvoice({
+      // Generate invoice as PDF (always PDF for emails to prevent tampering)
+      const result = await generateInvoicePDF({
         firmId: scheduled.firm_id,
         planType: scheduled.plan_type,
         duration: scheduled.duration,

@@ -110,7 +110,7 @@ async function processSingleScheduledInvoice(id) {
 
 async function processScheduledInvoices() {
   const db = await import('./lib/db.js');
-  const { generateInvoice } = await import('./lib/invoice.js');
+  const { generateInvoicePDF } = await import('./lib/invoice.js');
   const { sendInvoiceEmail } = await import('./lib/email.js');
 
   const pending = await db.getPendingScheduledInvoices();
@@ -122,7 +122,8 @@ async function processScheduledInvoices() {
       // Due date is the scheduled date (when the invoice was meant to be sent)
       const dueDate = new Date(scheduled.schedule_date);
 
-      const result = await generateInvoice({
+      // Generate invoice as PDF (always PDF for emails to prevent tampering)
+      const result = await generateInvoicePDF({
         firmId: scheduled.firm_id,
         planType: scheduled.plan_type,
         duration: scheduled.duration,
