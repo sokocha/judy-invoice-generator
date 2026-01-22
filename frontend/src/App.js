@@ -2374,6 +2374,8 @@ const api = {
   sendInvoice: (id) => authFetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoicePaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoiceUnpaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-unpaid&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoiceInactive: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-inactive&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoiceActive: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-active&id=${id}`, { method: 'POST' }).then(r => r.json()),
   deleteInvoice: (id) => authFetch(`${API_BASE}/api/invoices?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
   updateDraftInvoice: (id, data) => authFetch(`${API_BASE}/api/invoices?action=update-draft&id=${id}`, {
     method: 'POST',
@@ -4687,6 +4689,48 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setLoading(prev => ({ ...prev, [`${id}-unpaid`]: false }));
   };
 
+  const handleMarkInactive = async (id, invoiceNumber) => {
+    const confirmed = await confirm({
+      title: 'Mark Invoice as Inactive',
+      message: `Mark invoice ${invoiceNumber} as inactive?\n\nThis invoice will no longer count towards outstanding revenue or overdue metrics.`,
+      confirmText: 'Mark Inactive',
+      cancelText: 'Cancel',
+      type: 'warning'
+    });
+    if (!confirmed) return;
+    setLoading(prev => ({ ...prev, [`${id}-inactive`]: true }));
+    try {
+      const result = await api.markInvoiceInactive(id);
+      if (result.error) throw new Error(result.error);
+      addToast(`Invoice ${invoiceNumber} marked as inactive`, 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`${id}-inactive`]: false }));
+  };
+
+  const handleReactivate = async (id, invoiceNumber) => {
+    const confirmed = await confirm({
+      title: 'Reactivate Invoice',
+      message: `Reactivate invoice ${invoiceNumber}?\n\nThis invoice will be set back to "sent" status.`,
+      confirmText: 'Reactivate',
+      cancelText: 'Cancel',
+      type: 'info'
+    });
+    if (!confirmed) return;
+    setLoading(prev => ({ ...prev, [`${id}-active`]: true }));
+    try {
+      const result = await api.markInvoiceActive(id);
+      if (result.error) throw new Error(result.error);
+      addToast(`Invoice ${invoiceNumber} reactivated`, 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`${id}-active`]: false }));
+  };
+
   // Edit draft invoice state
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [editForm, setEditForm] = useState({
@@ -5054,6 +5098,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                         <span className={`badge ${
                           inv.status === 'paid' ? 'badge-green' :
                           inv.status === 'sent' ? 'badge-blue' :
+                          inv.status === 'inactive' ? 'badge-gray' :
                           'badge-yellow'
                         }`}>
                           {inv.status}
@@ -5149,6 +5194,42 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                                     <circle cx="12" cy="12" r="10"/>
                                     <line x1="15" y1="9" x2="9" y2="15"/>
                                     <line x1="9" y1="9" x2="15" y2="15"/>
+                                  </svg>
+                                )}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {inv.status === 'sent' && (
+                            <Tooltip text="Mark as inactive (superseded)">
+                              <button
+                                className="action-btn"
+                                style={{ background: '#f59e0b', color: 'white' }}
+                                onClick={() => handleMarkInactive(inv.id, inv.invoice_number)}
+                                disabled={loading[`${inv.id}-inactive`]}
+                              >
+                                {loading[`${inv.id}-inactive`] ? '...' : (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M21 8v13H3V8"/>
+                                    <path d="M1 3h22v5H1z"/>
+                                    <path d="M10 12h4"/>
+                                  </svg>
+                                )}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {inv.status === 'inactive' && (
+                            <Tooltip text="Reactivate invoice">
+                              <button
+                                className="action-btn"
+                                style={{ background: '#8b5cf6', color: 'white' }}
+                                onClick={() => handleReactivate(inv.id, inv.invoice_number)}
+                                disabled={loading[`${inv.id}-active`]}
+                              >
+                                {loading[`${inv.id}-active`] ? '...' : (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M23 4v6h-6"/>
+                                    <path d="M1 20v-6h6"/>
+                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
                                   </svg>
                                 )}
                               </button>
@@ -6324,7 +6405,7 @@ function AppContent() {
 
   // Calculate notification counts
   const overdueCount = invoices.filter(inv => {
-    if (inv.status === 'paid') return false;
+    if (inv.status === 'paid' || inv.status === 'inactive') return false;
     const dueDate = new Date(inv.due_date);
     return dueDate < new Date();
   }).length;

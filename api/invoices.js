@@ -150,6 +150,30 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: 'Invoice marked as unpaid' });
     }
 
+    // POST /api/invoices?action=mark-inactive&id=123
+    if (req.method === 'POST' && action === 'mark-inactive' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      await db.updateInvoiceStatus(id, 'inactive');
+      return res.status(200).json({ success: true, message: 'Invoice marked as inactive' });
+    }
+
+    // POST /api/invoices?action=mark-active&id=123 (reactivate an inactive invoice)
+    if (req.method === 'POST' && action === 'mark-active' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      if (invoice.status !== 'inactive') {
+        return res.status(400).json({ error: 'Only inactive invoices can be reactivated' });
+      }
+      // Revert to sent status
+      await db.updateInvoiceStatus(id, 'sent');
+      return res.status(200).json({ success: true, message: 'Invoice reactivated' });
+    }
+
     // POST /api/invoices?action=update-draft&id=123 - Update draft invoice
     if (req.method === 'POST' && action === 'update-draft' && id) {
       const invoice = await db.getInvoiceById(id);
