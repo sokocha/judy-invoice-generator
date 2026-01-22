@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import * as db from './db.js';
 
 // Send invoice email
-export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, additionalEmails = []) => {
+export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, additionalEmails = [], options = {}) => {
   const config = await db.getEmailConfig();
 
   if (!config || !config.smtp_host) {
@@ -39,13 +39,11 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
   const defaultBcc = firm.include_default_bcc !== false ? ['hello@judy.legal'] : [];
   const allBccEmails = [...new Set([...firmBccEmails, ...defaultBcc])]; // Remove duplicates
 
-  const mailOptions = {
-    from: `"${config.from_name || 'JUDY'}" <${config.from_email}>`,
-    to: firm.email,
-    cc: allCcEmails.length > 0 ? allCcEmails.join(', ') : undefined,
-    bcc: allBccEmails.length > 0 ? allBccEmails.join(', ') : undefined,
-    subject: `Invoice ${invoice.invoice_number} from JUDY`,
-    html: `
+  // Use custom subject/body if provided, otherwise use defaults
+  const { customSubject, customBody } = options;
+
+  const defaultSubject = `Invoice ${invoice.invoice_number} from JUDY`;
+  const defaultBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #9C27B0;">Invoice from JUDY</h2>
 
@@ -100,7 +98,41 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
           Accra, Ghana
         </p>
       </div>
-    `,
+    `;
+
+  // Build custom HTML body if custom body text is provided
+  let emailHtml = defaultBody;
+  if (customBody && customBody.trim()) {
+    // Convert plain text to HTML with proper formatting
+    const formattedBody = customBody
+      .split('\n')
+      .map(line => line.trim() ? `<p>${line}</p>` : '<br/>')
+      .join('\n');
+
+    emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #9C27B0;">Invoice from JUDY</h2>
+
+        ${formattedBody}
+
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+
+        <p style="color: #718096; font-size: 12px;">
+          JUDY INNOVATIVE TECH LTD<br/>
+          19 Banana Street, East Legon<br/>
+          Accra, Ghana
+        </p>
+      </div>
+    `;
+  }
+
+  const mailOptions = {
+    from: `"${config.from_name || 'JUDY'}" <${config.from_email}>`,
+    to: firm.email,
+    cc: allCcEmails.length > 0 ? allCcEmails.join(', ') : undefined,
+    bcc: allBccEmails.length > 0 ? allBccEmails.join(', ') : undefined,
+    subject: customSubject && customSubject.trim() ? customSubject.trim() : defaultSubject,
+    html: emailHtml,
     attachments: [
       {
         filename,

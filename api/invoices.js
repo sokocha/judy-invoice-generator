@@ -91,7 +91,7 @@ export default async function handler(req, res) {
       const { generateInvoicePDF } = await import('./lib/invoice.js');
       const { sendInvoiceEmail } = await import('./lib/email.js');
       const invoiceNumber = await db.getNextInvoiceNumber();
-      const { additionalEmails, ...invoiceData } = req.body;
+      const { additionalEmails, emailSubject, emailBody, ...invoiceData } = req.body;
       const result = await generateInvoicePDF({
         ...invoiceData,
         invoiceNumber
@@ -102,7 +102,8 @@ export default async function handler(req, res) {
         result.firm,
         result.buffer,
         result.filename,
-        additionalEmails || []
+        additionalEmails || [],
+        { customSubject: emailSubject, customBody: emailBody }
       );
 
       // Build recipient list for the message (firm email + firm CC emails + additional emails)
@@ -147,6 +148,30 @@ export default async function handler(req, res) {
       // Revert to sent status (since it was sent before being marked paid)
       await db.updateInvoiceStatus(id, 'sent');
       return res.status(200).json({ success: true, message: 'Invoice marked as unpaid' });
+    }
+
+    // POST /api/invoices?action=mark-inactive&id=123
+    if (req.method === 'POST' && action === 'mark-inactive' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      await db.updateInvoiceStatus(id, 'inactive');
+      return res.status(200).json({ success: true, message: 'Invoice marked as inactive' });
+    }
+
+    // POST /api/invoices?action=mark-active&id=123 (reactivate an inactive invoice)
+    if (req.method === 'POST' && action === 'mark-active' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      if (invoice.status !== 'inactive') {
+        return res.status(400).json({ error: 'Only inactive invoices can be reactivated' });
+      }
+      // Revert to sent status
+      await db.updateInvoiceStatus(id, 'sent');
+      return res.status(200).json({ success: true, message: 'Invoice reactivated' });
     }
 
     // POST /api/invoices?action=update-draft&id=123 - Update draft invoice

@@ -2374,6 +2374,8 @@ const api = {
   sendInvoice: (id) => authFetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoicePaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoiceUnpaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-unpaid&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoiceInactive: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-inactive&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoiceActive: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-active&id=${id}`, { method: 'POST' }).then(r => r.json()),
   deleteInvoice: (id) => authFetch(`${API_BASE}/api/invoices?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
   updateDraftInvoice: (id, data) => authFetch(`${API_BASE}/api/invoices?action=update-draft&id=${id}`, {
     method: 'POST',
@@ -3274,8 +3276,10 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   const [additionalEmails, setAdditionalEmails] = useState([]);
   const [newEmail, setNewEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  const [sendEmailSubject, setSendEmailSubject] = useState('');
+  const [sendEmailBody, setSendEmailBody] = useState('');
   const { addToast } = useToast();
-  const confirm = useConfirm();
 
   // Get selected firm's email
   const selectedFirm = formData.firmId ? firms.find(f => f.id === parseInt(formData.firmId)) : null;
@@ -3383,38 +3387,43 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     setLoadingAction(null);
   };
 
-  const handleSend = async () => {
+  const handleSend = () => {
     if (!formData.firmId) {
       addToast('Please select a law firm', 'error');
       return;
     }
-    // Include firm's stored CC emails in the recipient list
-    const firmCcEmails = selectedFirm?.cc_emails
-      ? selectedFirm.cc_emails.split(',').map(e => e.trim()).filter(e => e)
-      : [];
-    const allRecipients = [...new Set([selectedFirm?.email, ...firmCcEmails, ...additionalEmails])].filter(Boolean);
-    const confirmed = await confirm({
-      title: 'Send Invoice',
-      message: `Generate and send invoice to ${selectedFirm?.firm_name}?\n\nRecipients: ${allRecipients.join(', ')}`,
-      confirmText: 'Send',
-      cancelText: 'Cancel',
-      type: 'info'
-    });
-    if (!confirmed) return;
+    // Open the send dialog
+    setSendEmailSubject('');
+    setSendEmailBody('');
+    setShowSendDialog(true);
+  };
+
+  const handleConfirmSend = async () => {
+    setShowSendDialog(false);
     setLoadingAction('send');
     try {
       const result = await api.generateAndSendInvoice({
         ...formData,
-        additionalEmails: additionalEmails
+        additionalEmails: additionalEmails,
+        emailSubject: sendEmailSubject.trim() || undefined,
+        emailBody: sendEmailBody.trim() || undefined
       });
       if (result.error) throw new Error(result.error);
       addToast(result.message, 'success');
       setAdditionalEmails([]); // Clear additional emails after successful send
+      setSendEmailSubject('');
+      setSendEmailBody('');
       onRefresh();
     } catch (error) {
       addToast(error.message, 'error');
     }
     setLoadingAction(null);
+  };
+
+  const handleCancelSend = () => {
+    setShowSendDialog(false);
+    setSendEmailSubject('');
+    setSendEmailBody('');
   };
 
   return (
@@ -3705,6 +3714,106 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           <div className="preview-row">
             <span className="preview-label">Total</span>
             <span className="preview-value" style={{ color: '#1e40af', fontSize: '1.125rem' }}>{formatCurrency(preview.total)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Send Invoice Dialog */}
+      {showSendDialog && (
+        <div className="modal-overlay" onClick={handleCancelSend}>
+          <div className="confirm-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
+            <div className="confirm-icon confirm-icon-info">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </div>
+            <h3 className="confirm-title">Send Invoice</h3>
+            <p className="confirm-message" style={{ marginBottom: '0.5rem' }}>
+              Generate and send invoice to <strong>{selectedFirm?.firm_name}</strong>
+            </p>
+
+            {/* Recipients summary */}
+            <div style={{
+              background: '#f8fafc',
+              padding: '0.75rem',
+              borderRadius: '8px',
+              marginBottom: '1rem',
+              fontSize: '0.875rem',
+              textAlign: 'left'
+            }}>
+              <div style={{ marginBottom: '0.25rem' }}>
+                <span style={{ color: '#64748b' }}>To: </span>
+                <span style={{ color: '#1e40af' }}>{selectedFirm?.email}</span>
+              </div>
+              {(selectedFirm?.cc_emails || additionalEmails.length > 0) && (
+                <div>
+                  <span style={{ color: '#64748b' }}>CC: </span>
+                  <span style={{ color: '#92400e' }}>
+                    {[
+                      ...(selectedFirm?.cc_emails ? selectedFirm.cc_emails.split(',').map(e => e.trim()).filter(e => e) : []),
+                      ...additionalEmails
+                    ].join(', ')}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Email customization fields */}
+            <div style={{ textAlign: 'left', marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.375rem', color: '#374151', fontSize: '0.875rem' }}>
+                Email Subject <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>(optional)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Invoice JUDY-XXXX-XXXX from JUDY"
+                value={sendEmailSubject}
+                onChange={e => setSendEmailSubject(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div style={{ textAlign: 'left', marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.375rem', color: '#374151', fontSize: '0.875rem' }}>
+                Email Message <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>(optional)</span>
+              </label>
+              <textarea
+                placeholder="Leave empty to use default template with invoice details and payment info"
+                value={sendEmailBody}
+                onChange={e => setSendEmailBody(e.target.value)}
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div className="confirm-actions">
+              <button className="btn btn-secondary" onClick={handleCancelSend}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleConfirmSend}
+                style={{ background: '#059669' }}
+              >
+                Send Invoice
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -4580,6 +4689,48 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setLoading(prev => ({ ...prev, [`${id}-unpaid`]: false }));
   };
 
+  const handleMarkInactive = async (id, invoiceNumber) => {
+    const confirmed = await confirm({
+      title: 'Mark Invoice as Inactive',
+      message: `Mark invoice ${invoiceNumber} as inactive?\n\nThis invoice will no longer count towards outstanding revenue or overdue metrics.`,
+      confirmText: 'Mark Inactive',
+      cancelText: 'Cancel',
+      type: 'warning'
+    });
+    if (!confirmed) return;
+    setLoading(prev => ({ ...prev, [`${id}-inactive`]: true }));
+    try {
+      const result = await api.markInvoiceInactive(id);
+      if (result.error) throw new Error(result.error);
+      addToast(`Invoice ${invoiceNumber} marked as inactive`, 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`${id}-inactive`]: false }));
+  };
+
+  const handleReactivate = async (id, invoiceNumber) => {
+    const confirmed = await confirm({
+      title: 'Reactivate Invoice',
+      message: `Reactivate invoice ${invoiceNumber}?\n\nThis invoice will be set back to "sent" status.`,
+      confirmText: 'Reactivate',
+      cancelText: 'Cancel',
+      type: 'info'
+    });
+    if (!confirmed) return;
+    setLoading(prev => ({ ...prev, [`${id}-active`]: true }));
+    try {
+      const result = await api.markInvoiceActive(id);
+      if (result.error) throw new Error(result.error);
+      addToast(`Invoice ${invoiceNumber} reactivated`, 'success');
+      onRefresh();
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`${id}-active`]: false }));
+  };
+
   // Edit draft invoice state
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [editForm, setEditForm] = useState({
@@ -4947,6 +5098,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                         <span className={`badge ${
                           inv.status === 'paid' ? 'badge-green' :
                           inv.status === 'sent' ? 'badge-blue' :
+                          inv.status === 'inactive' ? 'badge-gray' :
                           'badge-yellow'
                         }`}>
                           {inv.status}
@@ -5042,6 +5194,42 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                                     <circle cx="12" cy="12" r="10"/>
                                     <line x1="15" y1="9" x2="9" y2="15"/>
                                     <line x1="9" y1="9" x2="15" y2="15"/>
+                                  </svg>
+                                )}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {inv.status === 'sent' && (
+                            <Tooltip text="Mark as inactive (superseded)">
+                              <button
+                                className="action-btn"
+                                style={{ background: '#f59e0b', color: 'white' }}
+                                onClick={() => handleMarkInactive(inv.id, inv.invoice_number)}
+                                disabled={loading[`${inv.id}-inactive`]}
+                              >
+                                {loading[`${inv.id}-inactive`] ? '...' : (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M21 8v13H3V8"/>
+                                    <path d="M1 3h22v5H1z"/>
+                                    <path d="M10 12h4"/>
+                                  </svg>
+                                )}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {inv.status === 'inactive' && (
+                            <Tooltip text="Reactivate invoice">
+                              <button
+                                className="action-btn"
+                                style={{ background: '#8b5cf6', color: 'white' }}
+                                onClick={() => handleReactivate(inv.id, inv.invoice_number)}
+                                disabled={loading[`${inv.id}-active`]}
+                              >
+                                {loading[`${inv.id}-active`] ? '...' : (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M23 4v6h-6"/>
+                                    <path d="M1 20v-6h6"/>
+                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
                                   </svg>
                                 )}
                               </button>
@@ -6217,7 +6405,7 @@ function AppContent() {
 
   // Calculate notification counts
   const overdueCount = invoices.filter(inv => {
-    if (inv.status === 'paid') return false;
+    if (inv.status === 'paid' || inv.status === 'inactive') return false;
     const dueDate = new Date(inv.due_date);
     return dueDate < new Date();
   }).length;
