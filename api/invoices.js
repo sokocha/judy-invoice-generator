@@ -91,7 +91,7 @@ export default async function handler(req, res) {
       const { generateInvoicePDF } = await import('./lib/invoice.js');
       const { sendInvoiceEmail } = await import('./lib/email.js');
       const invoiceNumber = await db.getNextInvoiceNumber();
-      const { additionalEmails, ...invoiceData } = req.body;
+      const { additionalEmails, emailSubject, emailBody, ...invoiceData } = req.body;
       const result = await generateInvoicePDF({
         ...invoiceData,
         invoiceNumber
@@ -102,7 +102,8 @@ export default async function handler(req, res) {
         result.firm,
         result.buffer,
         result.filename,
-        additionalEmails || []
+        additionalEmails || [],
+        { customSubject: emailSubject, customBody: emailBody }
       );
 
       // Build recipient list for the message (firm email + firm CC emails + additional emails)

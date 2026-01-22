@@ -3274,6 +3274,9 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   const [additionalEmails, setAdditionalEmails] = useState([]);
   const [newEmail, setNewEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [showEmailCustomization, setShowEmailCustomization] = useState(false);
   const { addToast } = useToast();
   const confirm = useConfirm();
 
@@ -3405,11 +3408,16 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     try {
       const result = await api.generateAndSendInvoice({
         ...formData,
-        additionalEmails: additionalEmails
+        additionalEmails: additionalEmails,
+        emailSubject: emailSubject.trim() || undefined,
+        emailBody: emailBody.trim() || undefined
       });
       if (result.error) throw new Error(result.error);
       addToast(result.message, 'success');
       setAdditionalEmails([]); // Clear additional emails after successful send
+      setEmailSubject(''); // Clear custom subject
+      setEmailBody(''); // Clear custom body
+      setShowEmailCustomization(false); // Collapse customization panel
       onRefresh();
     } catch (error) {
       addToast(error.message, 'error');
@@ -3604,6 +3612,119 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.5rem', marginBottom: 0 }}>
             Additional recipients will receive a copy of the invoice email
           </p>
+
+          {/* Email Customization Toggle */}
+          <div style={{ marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+            <button
+              type="button"
+              onClick={() => setShowEmailCustomization(!showEmailCustomization)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                color: '#6366f1',
+                fontWeight: '500',
+                fontSize: '0.875rem'
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                style={{ transform: showEmailCustomization ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+              Customize Email Content
+              {(emailSubject || emailBody) && (
+                <span style={{ background: '#6366f1', color: 'white', padding: '0.125rem 0.5rem', borderRadius: '10px', fontSize: '0.7rem', marginLeft: '0.25rem' }}>
+                  Custom
+                </span>
+              )}
+            </button>
+
+            {showEmailCustomization && (
+              <div style={{ marginTop: '1rem' }}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.375rem', color: '#374151', fontSize: '0.875rem' }}>
+                    Email Subject
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={`Invoice ${preview?.invoiceNumber || 'JUDY-XXXX-XXXX'} from JUDY`}
+                    value={emailSubject}
+                    onChange={e => setEmailSubject(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      fontSize: '0.875rem'
+                    }}
+                  />
+                  <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem', marginBottom: 0 }}>
+                    Leave empty to use the default subject
+                  </p>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.375rem', color: '#374151', fontSize: '0.875rem' }}>
+                    Email Body
+                  </label>
+                  <textarea
+                    placeholder="Dear [Firm Name],&#10;&#10;Please find attached your invoice for your JUDY subscription.&#10;&#10;If you have any questions, please don't hesitate to contact us.&#10;&#10;Thank you for choosing JUDY!"
+                    value={emailBody}
+                    onChange={e => setEmailBody(e.target.value)}
+                    rows={6}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      fontSize: '0.875rem',
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }}
+                  />
+                  <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem', marginBottom: 0 }}>
+                    Leave empty to use the default email template with invoice details and payment information
+                  </p>
+                </div>
+
+                {(emailSubject || emailBody) && (
+                  <button
+                    type="button"
+                    onClick={() => { setEmailSubject(''); setEmailBody(''); }}
+                    style={{
+                      marginTop: '0.75rem',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      color: '#ef4444',
+                      fontSize: '0.8rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                    Reset to default
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
