@@ -3198,16 +3198,17 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               </select>
             </div>
             <div className="form-group">
-              <label>Plan Duration</label>
-              <select
-                value={formData.plan_duration}
-                onChange={e => setFormData({ ...formData, plan_duration: e.target.value })}
-              >
-                <option value="1 month">1 Month</option>
-                <option value="3 months">3 Months</option>
-                <option value="6 months">6 Months</option>
-                <option value="12 months">12 Months</option>
-              </select>
+              <label>Plan Duration (Months)</label>
+              <input
+                type="number"
+                min="1"
+                max="60"
+                value={parseInt(formData.plan_duration) || 12}
+                onChange={e => {
+                  const val = parseInt(e.target.value) || 1;
+                  setFormData({ ...formData, plan_duration: val === 1 ? '1 month' : `${val} months` });
+                }}
+              />
             </div>
             <div className="form-group">
               <label>Number of Users</label>
@@ -3456,16 +3457,17 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           </select>
         </div>
         <div className="form-group">
-          <label>Duration</label>
-          <select
-            value={formData.duration}
-            onChange={e => setFormData({ ...formData, duration: e.target.value })}
-          >
-            <option value="1 month">1 Month</option>
-            <option value="3 months">3 Months</option>
-            <option value="6 months">6 Months</option>
-            <option value="12 months">12 Months</option>
-          </select>
+          <label>Duration (Months)</label>
+          <input
+            type="number"
+            min="1"
+            max="60"
+            value={parseInt(formData.duration) || 12}
+            onChange={e => {
+              const val = parseInt(e.target.value) || 1;
+              setFormData({ ...formData, duration: val === 1 ? '1 month' : `${val} months` });
+            }}
+          />
         </div>
         <div className="form-group">
           <label>Number of Users</label>
@@ -4308,16 +4310,17 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               </select>
             </div>
             <div className="form-group">
-              <label>Duration</label>
-              <select
-                value={formData.duration}
-                onChange={e => setFormData({ ...formData, duration: e.target.value })}
-              >
-                <option value="1 month">1 Month</option>
-                <option value="3 months">3 Months</option>
-                <option value="6 months">6 Months</option>
-                <option value="12 months">12 Months</option>
-              </select>
+              <label>Duration (Months)</label>
+              <input
+                type="number"
+                min="1"
+                max="60"
+                value={parseInt(formData.duration) || 12}
+                onChange={e => {
+                  const val = parseInt(e.target.value) || 1;
+                  setFormData({ ...formData, duration: val === 1 ? '1 month' : `${val} months` });
+                }}
+              />
             </div>
             <div className="form-group">
               <label>Number of Users</label>
@@ -4824,17 +4827,18 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               </div>
 
               <div className="form-group">
-                <label className="form-label">Duration</label>
-                <select
-                  className="form-select"
-                  value={editForm.duration}
-                  onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })}
-                >
-                  <option value="1 Month">1 Month</option>
-                  <option value="3 Months">3 Months</option>
-                  <option value="6 Months">6 Months</option>
-                  <option value="1 Year">1 Year</option>
-                </select>
+                <label className="form-label">Duration (Months)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="1"
+                  max="60"
+                  value={parseInt(editForm.duration) || 12}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 1;
+                    setEditForm({ ...editForm, duration: val === 1 ? '1 month' : `${val} months` });
+                  }}
+                />
               </div>
 
               <div className="form-group">
@@ -5779,17 +5783,18 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
               </div>
 
               <div className="form-group">
-                <label className="form-label">Duration</label>
-                <select
-                  className="form-select"
-                  value={editForm.duration}
-                  onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })}
-                >
-                  <option value="1 Month">1 Month</option>
-                  <option value="3 Months">3 Months</option>
-                  <option value="6 Months">6 Months</option>
-                  <option value="1 Year">1 Year</option>
-                </select>
+                <label className="form-label">Duration (Months)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="1"
+                  max="60"
+                  value={parseInt(editForm.duration) || 12}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 1;
+                    setEditForm({ ...editForm, duration: val === 1 ? '1 month' : `${val} months` });
+                  }}
+                />
               </div>
 
               <div className="form-group">
