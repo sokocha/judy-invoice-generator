@@ -257,6 +257,15 @@ export default async function handler(req, res) {
     `;
     migrations.push('reference_prices_seed_nigeria');
 
+    // Seed Ghana reference prices (idempotent)
+    await sql`
+      INSERT INTO reference_prices (country, plan_type, currency, price_per_user_per_month)
+      VALUES ('ghana', 'standard', 'GHS', 80),
+             ('ghana', 'plus', 'GHS', 400)
+      ON CONFLICT (country, plan_type) DO NOTHING
+    `;
+    migrations.push('reference_prices_seed_ghana');
+
     return res.status(200).json({
       success: true,
       message: `Migration completed: ${migrations.join(', ')} columns processed`

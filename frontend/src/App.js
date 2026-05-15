@@ -2324,7 +2324,12 @@ const ADDON_OPTIONS_BY_HOME_COUNTRY = {
     'USA (Select cases and legislation)',
     'UK (Select cases and legislation)'
   ],
-  ghana: []
+  ghana: [
+    'The Federal Republic of Nigeria',
+    'The Republic of Kenya',
+    'USA (Select cases and legislation)',
+    'UK (Select cases and legislation)'
+  ]
 };
 
 const parseAddons = (raw) => {
@@ -3267,16 +3272,14 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 <option value="nigeria">Nigeria</option>
               </select>
             </div>
-            {formData.home_country === 'nigeria' && (
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Addon Countries</label>
-                <AddonCountriesPicker
-                  homeCountry={formData.home_country}
-                  value={formData.addon_countries}
-                  onChange={(v) => setFormData({ ...formData, addon_countries: v })}
-                />
-              </div>
-            )}
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label>Addon Countries</label>
+              <AddonCountriesPicker
+                homeCountry={formData.home_country}
+                value={formData.addon_countries}
+                onChange={(v) => setFormData({ ...formData, addon_countries: v })}
+              />
+            </div>
             <div className="form-group">
               <label>Plan Duration (Months)</label>
               <input
@@ -3558,16 +3561,14 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             <option value="nigeria">Nigeria</option>
           </select>
         </div>
-        {formData.homeCountry === 'nigeria' && (
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label>Addon Countries</label>
-            <AddonCountriesPicker
-              homeCountry={formData.homeCountry}
-              value={formData.addonCountries}
-              onChange={(v) => setFormData({ ...formData, addonCountries: v })}
-            />
-          </div>
-        )}
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <label>Addon Countries</label>
+          <AddonCountriesPicker
+            homeCountry={formData.homeCountry}
+            value={formData.addonCountries}
+            onChange={(v) => setFormData({ ...formData, addonCountries: v })}
+          />
+        </div>
         <div className="form-group">
           <label>Duration (Months)</label>
           <input
@@ -3600,18 +3601,16 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             onChange={e => setFormData({ ...formData, baseAmount: parseFloat(e.target.value) || 0 })}
           />
         </div>
-        {formData.homeCountry === 'nigeria' && (
-          <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '1.5rem' }}>
-              <input
-                type="checkbox"
-                checked={formData.includeUnitCost}
-                onChange={e => setFormData({ ...formData, includeUnitCost: e.target.checked })}
-              />
-              Include unit cost (per-user price + discount)
-            </label>
-          </div>
-        )}
+        <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '1.5rem' }}>
+            <input
+              type="checkbox"
+              checked={formData.includeUnitCost}
+              onChange={e => setFormData({ ...formData, includeUnitCost: e.target.checked })}
+            />
+            Include unit cost (per-user price + discount)
+          </label>
+        </div>
         <div className="form-group">
           <label>Due Date</label>
           <input

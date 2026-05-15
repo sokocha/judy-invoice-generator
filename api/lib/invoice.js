@@ -63,6 +63,7 @@ export const calculateAmounts = (baseAmount, numUsers = 1, duration = '1 month',
 
 // Canonical addon ordering: African countries first, then others.
 const ADDON_ORDER = [
+  'The Federal Republic of Nigeria',
   'The Republic of Ghana',
   'The Republic of Kenya',
   'USA (Select cases and legislation)',
@@ -103,7 +104,7 @@ const loadTemplateBuffer = async (prefix) => {
 // Build per-user unit cost details. Returns null if not applicable.
 // baseAmount is already the per-user price.
 const buildUnitCost = async (country, planType, baseAmount, numUsers, includeUnitCost) => {
-  if (!includeUnitCost || country !== 'nigeria' || !numUsers || numUsers < 1) return null;
+  if (!includeUnitCost || !numUsers || numUsers < 1) return null;
   const ref = await db.getReferencePrice(country, planType);
   const refPrice = ref ? Number(ref.price_per_user_per_month) : null;
   const currency = ref ? ref.currency : (country === 'nigeria' ? 'NGN' : 'GHS');
