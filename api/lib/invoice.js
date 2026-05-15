@@ -25,12 +25,20 @@ const COUNTRY_LABELS = {
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
-// Calculate invoice amounts. baseAmount is the per-user price; subtotal = baseAmount * numUsers.
+// Parse the leading integer from a duration string like "12 months" or "1 month".
+export const parseDurationMonths = (duration) => {
+  const n = parseInt(duration, 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+};
+
+// Calculate invoice amounts. baseAmount is the per-user-per-month price;
+// subtotal = baseAmount * numUsers * months.
 // Ghana applies GTFL+NIHL+VAT15; Nigeria applies VAT7.5 only.
-export const calculateAmounts = (baseAmount, numUsers = 1, country = 'ghana') => {
+export const calculateAmounts = (baseAmount, numUsers = 1, duration = '1 month', country = 'ghana') => {
   const perUser = Number(baseAmount) || 0;
   const users = Math.max(1, parseInt(numUsers) || 1);
-  const base = perUser * users;
+  const months = parseDurationMonths(duration);
+  const base = perUser * users * months;
   if (country === 'nigeria') {
     const vat = base * 0.075;
     return {
@@ -141,7 +149,7 @@ export const generateInvoice = async (invoiceData) => {
 
   const country = (homeCountry || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(addonCountries ?? firm.addon_countries);
-  const amounts = calculateAmounts(baseAmount, numUsers, country);
+  const amounts = calculateAmounts(baseAmount, numUsers, duration, country);
   const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost);
 
   const prefix = templatePrefixFor(country, planType);
@@ -200,7 +208,7 @@ export const getInvoicePreview = async (invoiceData) => {
 
   const country = (homeCountry || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(addonCountries ?? firm.addon_countries);
-  const amounts = calculateAmounts(baseAmount, numUsers, country);
+  const amounts = calculateAmounts(baseAmount, numUsers, duration, country);
   const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost);
   const invoiceNumber = await db.getNextInvoiceNumber();
 
