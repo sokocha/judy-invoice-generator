@@ -185,7 +185,8 @@ export default async function handler(req, res) {
       }
 
       const { calculateAmounts } = await import('./lib/invoice.js');
-      const amounts = calculateAmounts(req.body.baseAmount);
+      const country = (req.body.homeCountry || invoice.home_country || 'ghana').toLowerCase();
+      const amounts = calculateAmounts(req.body.baseAmount, country);
 
       const updated = await db.updateDraftInvoice(id, {
         plan_type: req.body.planType,

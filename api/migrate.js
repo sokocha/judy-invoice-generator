@@ -141,6 +141,122 @@ export default async function handler(req, res) {
     `;
     migrations.push('reset_token_expires');
 
+    // law_firms.home_country
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'law_firms' AND column_name = 'home_country'
+        ) THEN
+          ALTER TABLE law_firms ADD COLUMN home_country VARCHAR(20) DEFAULT 'ghana';
+        END IF;
+      END $$
+    `;
+    migrations.push('home_country');
+
+    // law_firms.addon_countries (comma-separated TEXT)
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'law_firms' AND column_name = 'addon_countries'
+        ) THEN
+          ALTER TABLE law_firms ADD COLUMN addon_countries TEXT;
+        END IF;
+      END $$
+    `;
+    migrations.push('addon_countries');
+
+    // invoices.home_country
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'home_country') THEN
+          ALTER TABLE invoices ADD COLUMN home_country VARCHAR(20) DEFAULT 'ghana';
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.home_country');
+
+    // invoices.addon_countries
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'addon_countries') THEN
+          ALTER TABLE invoices ADD COLUMN addon_countries TEXT;
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.addon_countries');
+
+    // invoices.include_unit_cost
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'include_unit_cost') THEN
+          ALTER TABLE invoices ADD COLUMN include_unit_cost BOOLEAN DEFAULT false;
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.include_unit_cost');
+
+    // invoices.unit_cost
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'unit_cost') THEN
+          ALTER TABLE invoices ADD COLUMN unit_cost NUMERIC(12,2);
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.unit_cost');
+
+    // invoices.discount_pct
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'discount_pct') THEN
+          ALTER TABLE invoices ADD COLUMN discount_pct NUMERIC(5,2);
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.discount_pct');
+
+    // invoices.reference_price
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'reference_price') THEN
+          ALTER TABLE invoices ADD COLUMN reference_price NUMERIC(12,2);
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.reference_price');
+
+    // reference_prices table: per (country, plan_type) per-user-per-month
+    await sql`
+      CREATE TABLE IF NOT EXISTS reference_prices (
+        country VARCHAR(20) NOT NULL,
+        plan_type VARCHAR(20) NOT NULL,
+        currency VARCHAR(8) NOT NULL,
+        price_per_user_per_month NUMERIC(12,2) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (country, plan_type)
+      )
+    `;
+    migrations.push('reference_prices');
+
+    // Seed Nigeria reference prices (idempotent)
+    await sql`
+      INSERT INTO reference_prices (country, plan_type, currency, price_per_user_per_month)
+      VALUES ('nigeria', 'standard', 'NGN', 7000),
+             ('nigeria', 'plus', 'NGN', 35000)
+      ON CONFLICT (country, plan_type) DO NOTHING
+    `;
+    migrations.push('reference_prices_seed_nigeria');
+
     return res.status(200).json({
       success: true,
       message: `Migration completed: ${migrations.join(', ')} columns processed`

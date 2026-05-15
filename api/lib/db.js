@@ -19,8 +19,8 @@ export async function getFirmById(id) {
 
 export async function createFirm(firm) {
   const rows = await sql`
-    INSERT INTO law_firms (firm_name, street_address, city, email, cc_emails, bcc_emails, include_default_bcc, plan_type, plan_duration, num_users, subscription_start, subscription_end, base_price)
-    VALUES (${firm.firm_name}, ${firm.street_address}, ${firm.city}, ${firm.email}, ${firm.cc_emails || null}, ${firm.bcc_emails || null}, ${firm.include_default_bcc !== false}, ${firm.plan_type || 'standard'}, ${firm.plan_duration || '12 months'}, ${firm.num_users || 1}, ${firm.subscription_start || null}, ${firm.subscription_end || null}, ${firm.base_price || 0})
+    INSERT INTO law_firms (firm_name, street_address, city, email, cc_emails, bcc_emails, include_default_bcc, plan_type, plan_duration, num_users, subscription_start, subscription_end, base_price, home_country, addon_countries)
+    VALUES (${firm.firm_name}, ${firm.street_address}, ${firm.city}, ${firm.email}, ${firm.cc_emails || null}, ${firm.bcc_emails || null}, ${firm.include_default_bcc !== false}, ${firm.plan_type || 'standard'}, ${firm.plan_duration || '12 months'}, ${firm.num_users || 1}, ${firm.subscription_start || null}, ${firm.subscription_end || null}, ${firm.base_price || 0}, ${firm.home_country || 'ghana'}, ${firm.addon_countries || null})
     RETURNING *
   `;
   return rows[0];
@@ -42,6 +42,8 @@ export async function updateFirm(id, firm) {
       subscription_start = ${firm.subscription_start || null},
       subscription_end = ${firm.subscription_end || null},
       base_price = ${firm.base_price},
+      home_country = ${firm.home_country || 'ghana'},
+      addon_countries = ${firm.addon_countries || null},
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ${id}
     RETURNING *
@@ -96,11 +98,25 @@ export async function createInvoice(invoice) {
   }
 
   const rows = await sql`
-    INSERT INTO invoices (invoice_number, firm_id, plan_type, duration, num_users, base_amount, subtotal, gtfl, nihl, vat, total, due_date, status, additional_emails)
-    VALUES (${invoice.invoice_number}, ${invoice.firm_id}, ${invoice.plan_type}, ${invoice.duration}, ${invoice.num_users}, ${invoice.base_amount}, ${invoice.subtotal}, ${invoice.gtfl}, ${invoice.nihl}, ${invoice.vat}, ${invoice.total}, ${invoice.due_date}, ${invoice.status || 'draft'}, ${invoice.additional_emails || null})
+    INSERT INTO invoices (invoice_number, firm_id, plan_type, duration, num_users, base_amount, subtotal, gtfl, nihl, vat, total, due_date, status, additional_emails, home_country, addon_countries, include_unit_cost, unit_cost, discount_pct, reference_price)
+    VALUES (${invoice.invoice_number}, ${invoice.firm_id}, ${invoice.plan_type}, ${invoice.duration}, ${invoice.num_users}, ${invoice.base_amount}, ${invoice.subtotal}, ${invoice.gtfl}, ${invoice.nihl}, ${invoice.vat}, ${invoice.total}, ${invoice.due_date}, ${invoice.status || 'draft'}, ${invoice.additional_emails || null}, ${invoice.home_country || 'ghana'}, ${invoice.addon_countries || null}, ${invoice.include_unit_cost === true}, ${invoice.unit_cost ?? null}, ${invoice.discount_pct ?? null}, ${invoice.reference_price ?? null})
     RETURNING *
   `;
   return rows[0];
+}
+
+export async function getReferencePrices() {
+  const rows = await sql`SELECT country, plan_type, currency, price_per_user_per_month FROM reference_prices`;
+  return rows;
+}
+
+export async function getReferencePrice(country, planType) {
+  const rows = await sql`
+    SELECT currency, price_per_user_per_month
+    FROM reference_prices
+    WHERE country = ${country} AND plan_type = ${planType}
+  `;
+  return rows[0] || null;
 }
 
 export async function updateInvoiceStatus(id, status, sentAt = null) {
