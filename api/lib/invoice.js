@@ -82,19 +82,23 @@ const parseAddons = (raw) => {
   });
 };
 
-const templatePrefixFor = (country, planType) => {
+const templateFilenameFor = (country, planType) => {
   const base = planType === 'plus' ? 'Plus_Template_Polished' : 'Standard_Template_Polished';
-  return country === 'nigeria' ? `${base}_Nigeria` : base;
+  const suffix = country === 'nigeria' ? '_Nigeria' : '';
+  return `${base}${suffix}.docx`;
 };
 
-const loadTemplateBuffer = async (prefix) => {
-  console.log(`Looking for template with prefix: ${prefix}`);
-  const listResult = await list({ prefix });
-  if (!listResult.blobs || listResult.blobs.length === 0) {
-    throw new Error(`No blobs found with prefix: ${prefix}`);
+const loadTemplateBuffer = async (filename) => {
+  console.log(`Looking for template: ${filename}`);
+  const listResult = await list({ prefix: filename });
+  // list() does prefix matching; filter down to exact pathname so e.g.
+  // "Standard_Template_Polished.docx" doesn't pick up the Nigeria file.
+  const exact = (listResult.blobs || []).filter(b => b.pathname === filename);
+  if (exact.length === 0) {
+    throw new Error(`No blob found for template: ${filename}`);
   }
-  // Prefer the most recently uploaded blob in case stale duplicates exist.
-  const blob = listResult.blobs
+  // Prefer the most recently uploaded in case stale duplicates exist.
+  const blob = exact
     .slice()
     .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))[0];
   const response = await fetch(blob.url);
@@ -170,8 +174,7 @@ export const generateInvoice = async (invoiceData) => {
   const amounts = calculateAmounts(baseAmount, numUsers, duration, country);
   const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost);
 
-  const prefix = templatePrefixFor(country, planType);
-  const template = await loadTemplateBuffer(prefix);
+  const template = await loadTemplateBuffer(templateFilenameFor(country, planType));
 
   const templateData = buildTemplateData({
     firm, country, planType, duration, numUsers, amounts,
@@ -254,8 +257,7 @@ export const regenerateInvoice = async (invoiceRecord, format = 'pdf') => {
   const country = (invoiceRecord.home_country || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(invoiceRecord.addon_countries);
 
-  const prefix = templatePrefixFor(country, invoiceRecord.plan_type);
-  const template = await loadTemplateBuffer(prefix);
+  const template = await loadTemplateBuffer(templateFilenameFor(country, invoiceRecord.plan_type));
 
   const unitCostLine = invoiceRecord.include_unit_cost && invoiceRecord.unit_cost != null
     ? (() => {
