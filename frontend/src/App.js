@@ -2315,6 +2315,50 @@ const styles = `
   }
 `;
 
+// Addon country options per home country. Each home country lists the addon
+// countries that can be added underneath its own bullet on the invoice.
+const ADDON_OPTIONS_BY_HOME_COUNTRY = {
+  nigeria: [
+    'The Republic of Ghana',
+    'The Republic of Kenya',
+    'USA (Select cases and legislation)',
+    'UK (Select cases and legislation)'
+  ],
+  ghana: []
+};
+
+const parseAddons = (raw) => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+};
+
+function AddonCountriesPicker({ homeCountry, value, onChange }) {
+  const options = ADDON_OPTIONS_BY_HOME_COUNTRY[homeCountry] || [];
+  const selected = parseAddons(value);
+  if (options.length === 0) return null;
+  const toggle = (opt) => {
+    const next = selected.includes(opt)
+      ? selected.filter(s => s !== opt)
+      : [...selected, opt];
+    onChange(next.join(','));
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', padding: '0.5rem 0.75rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#fff' }}>
+      {options.map(opt => (
+        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={selected.includes(opt)}
+            onChange={() => toggle(opt)}
+          />
+          <span>{opt}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 // API Functions - Using query parameters for Vercel Hobby plan compatibility
 // Helper to get auth headers
 const getAuthHeaders = () => {
@@ -2394,6 +2438,9 @@ const api = {
   },
   emailAccountant: () => authFetch(`${API_BASE}/api/invoices?action=email-accountant`, { method: 'POST' }).then(r => r.json()),
 
+  // Reference prices (per-country per-plan unit costs)
+  getReferencePrices: () => authFetch(`${API_BASE}/api/reference-prices`).then(r => r.json()),
+
   // Scheduled
   getScheduled: () => authFetch(`${API_BASE}/api/scheduled`).then(r => r.json()),
   createScheduled: (data) => authFetch(`${API_BASE}/api/scheduled`, {
@@ -2422,8 +2469,8 @@ const api = {
 };
 
 // Format currency
-const formatCurrency = (amount) => {
-  return `GHS ${Number(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+const formatCurrency = (amount, currency = 'GHS') => {
+  return `${currency} ${Number(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 };
 
 // Format date
@@ -2702,7 +2749,9 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
     num_users: 1,
     subscription_start: '',
     subscription_end: '',
-    base_price: 0
+    base_price: 0,
+    home_country: 'ghana',
+    addon_countries: ''
   });
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -2804,7 +2853,9 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
         num_users: firm.num_users || 1,
         subscription_start: firm.subscription_start ? firm.subscription_start.split('T')[0] : '',
         subscription_end: firm.subscription_end ? firm.subscription_end.split('T')[0] : '',
-        base_price: firm.base_price || 0
+        base_price: firm.base_price || 0,
+        home_country: firm.home_country || 'ghana',
+        addon_countries: firm.addon_countries || ''
       });
     } else {
       setEditingFirm(null);
@@ -2821,7 +2872,9 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
         num_users: 1,
         subscription_start: '',
         subscription_end: '',
-        base_price: 0
+        base_price: 0,
+        home_country: 'ghana',
+        addon_countries: ''
       });
     }
     setShowModal(true);
@@ -3198,6 +3251,33 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               </select>
             </div>
             <div className="form-group">
+              <label>Home Country</label>
+              <select
+                value={formData.home_country}
+                onChange={e => {
+                  const hc = e.target.value;
+                  setFormData({
+                    ...formData,
+                    home_country: hc,
+                    addon_countries: hc === formData.home_country ? formData.addon_countries : ''
+                  });
+                }}
+              >
+                <option value="ghana">Ghana</option>
+                <option value="nigeria">Nigeria</option>
+              </select>
+            </div>
+            {formData.home_country === 'nigeria' && (
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>Addon Countries</label>
+                <AddonCountriesPicker
+                  homeCountry={formData.home_country}
+                  value={formData.addon_countries}
+                  onChange={(v) => setFormData({ ...formData, addon_countries: v })}
+                />
+              </div>
+            )}
+            <div className="form-group">
               <label>Plan Duration (Months)</label>
               <input
                 type="number"
@@ -3220,7 +3300,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               />
             </div>
             <div className={`form-group ${errors.base_price ? 'has-error' : ''}`}>
-              <label>Base Price (GHS)</label>
+              <label>Base Price per User per Month ({formData.home_country === 'nigeria' ? 'NGN' : 'GHS'})</label>
               <input
                 type="number"
                 min="0"
@@ -3269,7 +3349,10 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     duration: '12 months',
     numUsers: 1,
     baseAmount: 0,
-    dueDate: ''
+    dueDate: '',
+    homeCountry: 'ghana',
+    addonCountries: '',
+    includeUnitCost: true
   });
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -3340,7 +3423,9 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           ...prev,
           planType: firm.plan_type || 'standard',
           numUsers: firm.num_users || 1,
-          baseAmount: firm.base_price || 0
+          baseAmount: firm.base_price || 0,
+          homeCountry: firm.home_country || 'ghana',
+          addonCountries: firm.addon_countries || ''
         }));
       }
     }
@@ -3457,6 +3542,33 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           </select>
         </div>
         <div className="form-group">
+          <label>Home Country</label>
+          <select
+            value={formData.homeCountry}
+            onChange={e => {
+              const hc = e.target.value;
+              setFormData({
+                ...formData,
+                homeCountry: hc,
+                addonCountries: hc === formData.homeCountry ? formData.addonCountries : ''
+              });
+            }}
+          >
+            <option value="ghana">Ghana</option>
+            <option value="nigeria">Nigeria</option>
+          </select>
+        </div>
+        {formData.homeCountry === 'nigeria' && (
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label>Addon Countries</label>
+            <AddonCountriesPicker
+              homeCountry={formData.homeCountry}
+              value={formData.addonCountries}
+              onChange={(v) => setFormData({ ...formData, addonCountries: v })}
+            />
+          </div>
+        )}
+        <div className="form-group">
           <label>Duration (Months)</label>
           <input
             type="number"
@@ -3479,7 +3591,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           />
         </div>
         <div className="form-group">
-          <label>Base Amount (GHS)</label>
+          <label>Base Price per User per Month ({formData.homeCountry === 'nigeria' ? 'NGN' : 'GHS'})</label>
           <input
             type="number"
             min="0"
@@ -3488,6 +3600,18 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             onChange={e => setFormData({ ...formData, baseAmount: parseFloat(e.target.value) || 0 })}
           />
         </div>
+        {formData.homeCountry === 'nigeria' && (
+          <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '1.5rem' }}>
+              <input
+                type="checkbox"
+                checked={formData.includeUnitCost}
+                onChange={e => setFormData({ ...formData, includeUnitCost: e.target.checked })}
+              />
+              Include unit cost (per-user price + discount)
+            </label>
+          </div>
+        )}
         <div className="form-group">
           <label>Due Date</label>
           <input
@@ -3699,23 +3823,39 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           </div>
           <div className="preview-row">
             <span className="preview-label">Subtotal</span>
-            <span className="preview-value">{formatCurrency(preview.subtotal)}</span>
+            <span className="preview-value">{formatCurrency(preview.subtotal, preview.currency)}</span>
           </div>
-          <div className="preview-row">
-            <span className="preview-label">GTFL (2.5%)</span>
-            <span className="preview-value">{formatCurrency(preview.gtfl)}</span>
-          </div>
-          <div className="preview-row">
-            <span className="preview-label">NIHL (2.5%)</span>
-            <span className="preview-value">{formatCurrency(preview.nihl)}</span>
-          </div>
-          <div className="preview-row">
-            <span className="preview-label">VAT (15%)</span>
-            <span className="preview-value">{formatCurrency(preview.vat)}</span>
-          </div>
+          {preview.homeCountry !== 'nigeria' && (
+            <>
+              <div className="preview-row">
+                <span className="preview-label">GTFL (2.5%)</span>
+                <span className="preview-value">{formatCurrency(preview.gtfl, preview.currency)}</span>
+              </div>
+              <div className="preview-row">
+                <span className="preview-label">NIHL (2.5%)</span>
+                <span className="preview-value">{formatCurrency(preview.nihl, preview.currency)}</span>
+              </div>
+              <div className="preview-row">
+                <span className="preview-label">VAT (15%)</span>
+                <span className="preview-value">{formatCurrency(preview.vat, preview.currency)}</span>
+              </div>
+            </>
+          )}
+          {preview.homeCountry === 'nigeria' && (
+            <div className="preview-row">
+              <span className="preview-label">VAT (7.5%)</span>
+              <span className="preview-value">{formatCurrency(preview.vat, preview.currency)}</span>
+            </div>
+          )}
+          {preview.unitCostLine && (
+            <div className="preview-row">
+              <span className="preview-label">Per User</span>
+              <span className="preview-value">{preview.unitCostLine}</span>
+            </div>
+          )}
           <div className="preview-row">
             <span className="preview-label">Total</span>
-            <span className="preview-value" style={{ color: '#1e40af', fontSize: '1.125rem' }}>{formatCurrency(preview.total)}</span>
+            <span className="preview-value" style={{ color: '#1e40af', fontSize: '1.125rem' }}>{formatCurrency(preview.total, preview.currency)}</span>
           </div>
         </div>
       )}
@@ -4332,7 +4472,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               />
             </div>
             <div className="form-group">
-              <label>Base Amount (GHS)</label>
+              <label>Base Price per User per Month (GHS)</label>
               <input
                 type="number"
                 min="0"
@@ -4771,9 +4911,13 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setIsUpdating(false);
   };
 
-  // Calculate preview amounts for edit form
+  // Calculate preview amounts for edit form (baseAmount is per-user-per-month)
   const editPreviewAmounts = (() => {
-    const base = Number(editForm.baseAmount) || 0;
+    const perUser = Number(editForm.baseAmount) || 0;
+    const users = Math.max(1, parseInt(editForm.numUsers) || 1);
+    const monthsParsed = parseInt(editForm.duration, 10);
+    const months = Number.isFinite(monthsParsed) && monthsParsed > 0 ? monthsParsed : 1;
+    const base = perUser * users * months;
     const gtfl = base * 0.025;
     const nihl = base * 0.025;
     const vat = base * 0.15;
@@ -4853,7 +4997,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               </div>
 
               <div className="form-group">
-                <label className="form-label">Base Amount (GHS)</label>
+                <label className="form-label">Base Price per User per Month (GHS)</label>
                 <input
                   type="number"
                   className="form-input"
@@ -5690,9 +5834,13 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
     setLoading(prev => ({ ...prev, [`delete-${invoice.id}`]: false }));
   };
 
-  // Calculate preview amounts for edit form
+  // Calculate preview amounts for edit form (baseAmount is per-user-per-month)
   const editPreviewAmounts = (() => {
-    const base = Number(editForm.baseAmount) || 0;
+    const perUser = Number(editForm.baseAmount) || 0;
+    const users = Math.max(1, parseInt(editForm.numUsers) || 1);
+    const monthsParsed = parseInt(editForm.duration, 10);
+    const months = Number.isFinite(monthsParsed) && monthsParsed > 0 ? monthsParsed : 1;
+    const base = perUser * users * months;
     const gtfl = base * 0.025;
     const nihl = base * 0.025;
     const vat = base * 0.15;
@@ -5809,7 +5957,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
               </div>
 
               <div className="form-group">
-                <label className="form-label">Base Amount (GHS)</label>
+                <label className="form-label">Base Price per User per Month (GHS)</label>
                 <input
                   type="number"
                   className="form-input"

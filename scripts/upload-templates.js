@@ -21,7 +21,9 @@ const TEMPLATES_DIR = path.join(__dirname, '../backend/templates');
 async function uploadTemplates() {
   const templates = [
     'Plus_Template_Polished.docx',
-    'Standard_Template_Polished.docx'
+    'Standard_Template_Polished.docx',
+    'Plus_Template_Polished_Nigeria.docx',
+    'Standard_Template_Polished_Nigeria.docx'
   ];
 
   console.log('Uploading templates to Vercel Blob...\n');
