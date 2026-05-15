@@ -213,12 +213,16 @@ export default async function handler(req, res) {
     `;
     migrations.push('invoices.unit_cost');
 
-    // invoices.discount_pct
+    // invoices.discount_pct (widen if it was created at NUMERIC(5,2);
+    // computed value can exceed +/- 999.99% when the firm price diverges
+    // significantly from the reference price)
     await sql`
       DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'discount_pct') THEN
-          ALTER TABLE invoices ADD COLUMN discount_pct NUMERIC(5,2);
+          ALTER TABLE invoices ADD COLUMN discount_pct NUMERIC(10,2);
+        ELSE
+          ALTER TABLE invoices ALTER COLUMN discount_pct TYPE NUMERIC(10,2);
         END IF;
       END $$
     `;

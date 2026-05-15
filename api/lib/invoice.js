@@ -118,7 +118,7 @@ const buildUnitCost = async (country, planType, baseAmount, numUsers, includeUni
   const unit = round2(Number(baseAmount) || 0);
   let line;
   let discountPct = null;
-  if (refPrice && refPrice > 0) {
+  if (refPrice && refPrice > 0 && unit < refPrice) {
     discountPct = round2(((refPrice - unit) / refPrice) * 100);
     line = `${currency} ${formatAmount(unit)}/user (${discountPct}% off ${currency} ${formatAmount(refPrice)})`;
   } else {
