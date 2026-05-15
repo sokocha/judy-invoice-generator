@@ -93,10 +93,13 @@ const loadTemplateBuffer = async (prefix) => {
   if (!listResult.blobs || listResult.blobs.length === 0) {
     throw new Error(`No blobs found with prefix: ${prefix}`);
   }
-  const blobUrl = listResult.blobs[0].url;
-  const response = await fetch(blobUrl);
+  // Prefer the most recently uploaded blob in case stale duplicates exist.
+  const blob = listResult.blobs
+    .slice()
+    .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))[0];
+  const response = await fetch(blob.url);
   if (!response.ok) {
-    throw new Error(`Failed to fetch template from ${blobUrl}: ${response.status}`);
+    throw new Error(`Failed to fetch template from ${blob.url}: ${response.status}`);
   }
   return Buffer.from(await response.arrayBuffer());
 };

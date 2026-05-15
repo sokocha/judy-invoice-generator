@@ -8,7 +8,7 @@
  * Run with: node scripts/upload-templates.js
  */
 
-import { put } from '@vercel/blob';
+import { put, list, del } from '@vercel/blob';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -37,11 +37,21 @@ async function uploadTemplates() {
     }
 
     const fileBuffer = fs.readFileSync(templatePath);
+    const prefix = templateName.replace(/\.docx$/, '');
 
     try {
+      const existing = await list({ prefix });
+      if (existing.blobs && existing.blobs.length > 0) {
+        const urls = existing.blobs.map(b => b.url);
+        console.log(`Deleting ${urls.length} existing blob(s) for ${prefix}`);
+        await del(urls);
+      }
+
       const blob = await put(templateName, fileBuffer, {
         access: 'public',
-        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        addRandomSuffix: false,
+        allowOverwrite: true
       });
 
       console.log(`Uploaded: ${templateName}`);
