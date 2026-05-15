@@ -61,10 +61,24 @@ export const calculateAmounts = (baseAmount, numUsers = 1, duration = '1 month',
   };
 };
 
+// Canonical addon ordering: African countries first, then others.
+const ADDON_ORDER = [
+  'The Republic of Ghana',
+  'The Republic of Kenya',
+  'USA (Select cases and legislation)',
+  'UK (Select cases and legislation)',
+];
+
 const parseAddons = (raw) => {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.filter(Boolean);
-  return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+  let list;
+  if (!raw) list = [];
+  else if (Array.isArray(raw)) list = raw.filter(Boolean);
+  else list = String(raw).split(',').map(s => s.trim()).filter(Boolean);
+  return list.slice().sort((a, b) => {
+    const ai = ADDON_ORDER.indexOf(a);
+    const bi = ADDON_ORDER.indexOf(b);
+    return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+  });
 };
 
 const templatePrefixFor = (country, planType) => {
