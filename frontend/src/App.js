@@ -2349,17 +2349,36 @@ function AddonCountriesPicker({ homeCountry, value, onChange }) {
     onChange(next.join(','));
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', padding: '0.5rem 0.75rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#fff' }}>
-      {options.map(opt => (
-        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={selected.includes(opt)}
-            onChange={() => toggle(opt)}
-          />
-          <span>{opt}</span>
-        </label>
-      ))}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.5rem' }}>
+      {options.map(opt => {
+        const isSelected = selected.includes(opt);
+        return (
+          <label
+            key={opt}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.5rem 0.75rem',
+              border: `1px solid ${isSelected ? '#3b82f6' : '#cbd5e1'}`,
+              borderRadius: '6px',
+              background: isSelected ? '#eff6ff' : '#fff',
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              userSelect: 'none',
+              transition: 'border-color 0.15s, background 0.15s'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggle(opt)}
+              style={{ flexShrink: 0, margin: 0, cursor: 'pointer' }}
+            />
+            <span style={{ lineHeight: 1.25 }}>{opt}</span>
+          </label>
+        );
+      })}
     </div>
   );
 }
