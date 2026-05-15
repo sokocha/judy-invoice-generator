@@ -2373,9 +2373,19 @@ function AddonCountriesPicker({ homeCountry, value, onChange }) {
               type="checkbox"
               checked={isSelected}
               onChange={() => toggle(opt)}
-              style={{ flexShrink: 0, margin: 0, cursor: 'pointer' }}
+              style={{
+                flexShrink: 0,
+                width: '16px',
+                height: '16px',
+                margin: 0,
+                padding: 0,
+                border: '1px solid #94a3b8',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                accentColor: '#3b82f6'
+              }}
             />
-            <span style={{ lineHeight: 1.25 }}>{opt}</span>
+            <span style={{ lineHeight: 1.3, flex: 1 }}>{opt}</span>
           </label>
         );
       })}
