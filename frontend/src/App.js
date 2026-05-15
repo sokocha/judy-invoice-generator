@@ -3300,7 +3300,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               />
             </div>
             <div className={`form-group ${errors.base_price ? 'has-error' : ''}`}>
-              <label>Base Price ({formData.home_country === 'nigeria' ? 'NGN' : 'GHS'})</label>
+              <label>Base Price per User ({formData.home_country === 'nigeria' ? 'NGN' : 'GHS'})</label>
               <input
                 type="number"
                 min="0"
@@ -3591,7 +3591,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           />
         </div>
         <div className="form-group">
-          <label>Base Amount ({formData.homeCountry === 'nigeria' ? 'NGN' : 'GHS'})</label>
+          <label>Base Price per User ({formData.homeCountry === 'nigeria' ? 'NGN' : 'GHS'})</label>
           <input
             type="number"
             min="0"
@@ -4472,7 +4472,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               />
             </div>
             <div className="form-group">
-              <label>Base Amount (GHS)</label>
+              <label>Base Price per User (GHS)</label>
               <input
                 type="number"
                 min="0"
@@ -4911,9 +4911,11 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setIsUpdating(false);
   };
 
-  // Calculate preview amounts for edit form
+  // Calculate preview amounts for edit form (baseAmount is per-user)
   const editPreviewAmounts = (() => {
-    const base = Number(editForm.baseAmount) || 0;
+    const perUser = Number(editForm.baseAmount) || 0;
+    const users = Math.max(1, parseInt(editForm.numUsers) || 1);
+    const base = perUser * users;
     const gtfl = base * 0.025;
     const nihl = base * 0.025;
     const vat = base * 0.15;
@@ -4993,7 +4995,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               </div>
 
               <div className="form-group">
-                <label className="form-label">Base Amount (GHS)</label>
+                <label className="form-label">Base Price per User (GHS)</label>
                 <input
                   type="number"
                   className="form-input"
@@ -5830,9 +5832,11 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
     setLoading(prev => ({ ...prev, [`delete-${invoice.id}`]: false }));
   };
 
-  // Calculate preview amounts for edit form
+  // Calculate preview amounts for edit form (baseAmount is per-user)
   const editPreviewAmounts = (() => {
-    const base = Number(editForm.baseAmount) || 0;
+    const perUser = Number(editForm.baseAmount) || 0;
+    const users = Math.max(1, parseInt(editForm.numUsers) || 1);
+    const base = perUser * users;
     const gtfl = base * 0.025;
     const nihl = base * 0.025;
     const vat = base * 0.15;
@@ -5949,7 +5953,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
               </div>
 
               <div className="form-group">
-                <label className="form-label">Base Amount (GHS)</label>
+                <label className="form-label">Base Price per User (GHS)</label>
                 <input
                   type="number"
                   className="form-input"

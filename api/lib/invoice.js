@@ -25,9 +25,12 @@ const COUNTRY_LABELS = {
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
-// Calculate invoice amounts. Ghana applies GTFL+NIHL+VAT15; Nigeria applies VAT7.5 only.
-export const calculateAmounts = (baseAmount, country = 'ghana') => {
-  const base = Number(baseAmount) || 0;
+// Calculate invoice amounts. baseAmount is the per-user price; subtotal = baseAmount * numUsers.
+// Ghana applies GTFL+NIHL+VAT15; Nigeria applies VAT7.5 only.
+export const calculateAmounts = (baseAmount, numUsers = 1, country = 'ghana') => {
+  const perUser = Number(baseAmount) || 0;
+  const users = Math.max(1, parseInt(numUsers) || 1);
+  const base = perUser * users;
   if (country === 'nigeria') {
     const vat = base * 0.075;
     return {
@@ -76,12 +79,13 @@ const loadTemplateBuffer = async (prefix) => {
 };
 
 // Build per-user unit cost details. Returns null if not applicable.
+// baseAmount is already the per-user price.
 const buildUnitCost = async (country, planType, baseAmount, numUsers, includeUnitCost) => {
   if (!includeUnitCost || country !== 'nigeria' || !numUsers || numUsers < 1) return null;
   const ref = await db.getReferencePrice(country, planType);
   const refPrice = ref ? Number(ref.price_per_user_per_month) : null;
   const currency = ref ? ref.currency : (country === 'nigeria' ? 'NGN' : 'GHS');
-  const unit = round2(Number(baseAmount) / Number(numUsers));
+  const unit = round2(Number(baseAmount) || 0);
   let line;
   let discountPct = null;
   if (refPrice && refPrice > 0) {
@@ -93,7 +97,7 @@ const buildUnitCost = async (country, planType, baseAmount, numUsers, includeUni
   return { line, unit, discountPct, referencePrice: refPrice };
 };
 
-const buildTemplateData = ({ firm, country, planType, duration, numUsers, baseAmount, amounts, invoiceNumber, dueDate, addons, unitCostLine }) => {
+const buildTemplateData = ({ firm, country, planType, duration, numUsers, amounts, invoiceNumber, dueDate, addons, unitCostLine }) => {
   const countryLabel = COUNTRY_LABELS[country] || COUNTRY_LABELS.ghana;
   const cityWithCountry = `${firm.city}, ${countryLabel}`;
   return {
@@ -105,7 +109,7 @@ const buildTemplateData = ({ firm, country, planType, duration, numUsers, baseAm
     CITY: cityWithCountry,
     DURATION: duration,
     USERS: String(numUsers),
-    BASE: formatAmount(baseAmount),
+    BASE: formatAmount(amounts.subtotal),
     SUBTOTAL: formatAmount(amounts.subtotal),
     GTFL: formatAmount(amounts.gtfl),
     NIHL: formatAmount(amounts.nihl),
@@ -137,14 +141,14 @@ export const generateInvoice = async (invoiceData) => {
 
   const country = (homeCountry || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(addonCountries ?? firm.addon_countries);
-  const amounts = calculateAmounts(baseAmount, country);
+  const amounts = calculateAmounts(baseAmount, numUsers, country);
   const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost);
 
   const prefix = templatePrefixFor(country, planType);
   const template = await loadTemplateBuffer(prefix);
 
   const templateData = buildTemplateData({
-    firm, country, planType, duration, numUsers, baseAmount, amounts,
+    firm, country, planType, duration, numUsers, amounts,
     invoiceNumber, dueDate, addons, unitCostLine: unitCost ? unitCost.line : ''
   });
 
@@ -196,7 +200,7 @@ export const getInvoicePreview = async (invoiceData) => {
 
   const country = (homeCountry || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(addonCountries ?? firm.addon_countries);
-  const amounts = calculateAmounts(baseAmount, country);
+  const amounts = calculateAmounts(baseAmount, numUsers, country);
   const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost);
   const invoiceNumber = await db.getNextInvoiceNumber();
 
@@ -251,7 +255,7 @@ export const regenerateInvoice = async (invoiceRecord, format = 'pdf') => {
   const templateData = buildTemplateData({
     firm, country, planType: invoiceRecord.plan_type,
     duration: invoiceRecord.duration, numUsers: invoiceRecord.num_users,
-    baseAmount: invoiceRecord.base_amount, amounts,
+    amounts,
     invoiceNumber: invoiceRecord.invoice_number, dueDate: invoiceRecord.due_date,
     addons, unitCostLine
   });
