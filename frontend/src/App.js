@@ -2355,7 +2355,13 @@ const PLAN_LIST_PRICES = {
   nigeria: { standard: 7000, plus: 35000 }
 };
 const ADDON_LIST_PRICES = { ghana: 20, nigeria: 1500 };
-const PRICED_ADDONS = ['The Federal Republic of Nigeria', 'The Republic of Ghana', 'The Republic of Kenya'];
+const PRICED_ADDONS = [
+  'The Federal Republic of Nigeria',
+  'The Republic of Ghana',
+  'The Republic of Kenya',
+  'USA (Select cases and legislation)',
+  'UK (Select cases and legislation)'
+];
 
 const computeNormalPrice = (homeCountry, planType, addonCountries) => {
   const base = (PLAN_LIST_PRICES[homeCountry] || {})[planType] || 0;
@@ -6709,7 +6715,7 @@ function PricingSection() {
                 onChange={e => setAddonPrice(country, e.target.value)}
               />
               <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                Applied per country-database addon (Nigeria, Ghana, Kenya)
+                Applied per addon: Nigeria, Ghana, and Kenya databases, USA and UK
               </small>
             </div>
           </div>

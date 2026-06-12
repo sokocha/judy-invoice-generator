@@ -116,7 +116,8 @@ CREATE TABLE IF NOT EXISTS plan_prices (
   PRIMARY KEY (country, plan_type, duration_months)
 );
 
--- Addon prices: per-country price per user per month per country-database addon
+-- Addon prices: per-country price per user per month per addon
+-- (Nigeria, Ghana, Kenya databases, USA, UK)
 CREATE TABLE IF NOT EXISTS addon_prices (
   country VARCHAR(20) PRIMARY KEY,
   currency VARCHAR(8) NOT NULL,
