@@ -2345,6 +2345,9 @@ const CITIES_BY_COUNTRY = {
 
 const COUNTRY_LABELS = { ghana: 'Ghana', nigeria: 'Nigeria' };
 
+const planLabel = (planType) =>
+  planType === 'plus' ? 'Plus' : planType === 'student' ? 'Student' : 'Standard';
+
 const countryForCity = (city) =>
   Object.keys(CITIES_BY_COUNTRY).find(c => CITIES_BY_COUNTRY[c].includes(city)) || null;
 
@@ -2640,7 +2643,8 @@ const getDueDateStatus = (dueDate) => {
   const diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
-    return { class: 'badge-overdue', label: `${Math.abs(diffDays)} days overdue` };
+    const n = Math.abs(diffDays);
+    return { class: 'badge-overdue', label: `${n} day${n === 1 ? '' : 's'} overdue` };
   } else if (diffDays === 0) {
     return { class: 'badge-overdue', label: 'Due today' };
   } else if (diffDays <= 7) {
@@ -2836,7 +2840,7 @@ const exportToCSV = (data, filename) => {
   const rows = data.map(inv => [
     inv.invoice_number,
     inv.firm_name,
-    inv.plan_type === 'plus' ? 'Plus' : 'Standard',
+    planLabel(inv.plan_type),
     inv.duration,
     inv.num_users,
     inv.base_amount,
@@ -3129,6 +3133,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
             onChange={e => setPlanFilter(e.target.value)}
           >
             <option value="all">All Plans</option>
+            <option value="student">Student</option>
             <option value="standard">Standard</option>
             <option value="plus">Plus</option>
           </select>
@@ -3221,7 +3226,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                     {/* Plan */}
                     <td>
                       <span className={`badge ${firm.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
-                        {firm.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                        {planLabel(firm.plan_type)}
                       </span>
                     </td>
                     {/* Users */}
@@ -3624,9 +3629,11 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     addonCountries: '',
     includeUnitCost: true
   });
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingAction, setLoadingAction] = useState(null); // 'preview', 'pdf', 'docx', 'send'
+  const [loadingAction, setLoadingAction] = useState(null); // 'pdf', 'docx', 'send'
+  const [customDuration, setCustomDuration] = useState(false);
+  const [pricing, setPricing] = useState(null);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const downloadMenuRef = useRef(null);
   const [additionalEmails, setAdditionalEmails] = useState([]);
   const [newEmail, setNewEmail] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -3635,6 +3642,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   const [sendEmailBody, setSendEmailBody] = useState('');
   const [referencePrices, setReferencePrices] = useState([]);
   const { addToast } = useToast();
+  const confirm = useConfirm();
 
   // Get selected firm's email
   const selectedFirm = formData.firmId ? firms.find(f => f.id === parseInt(formData.firmId)) : null;
@@ -3643,12 +3651,28 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     api.getReferencePrices()
       .then(rows => setReferencePrices(Array.isArray(rows) ? rows : []))
       .catch(() => {});
+    api.getPricing().then(setPricing).catch(() => {});
+  }, []);
+
+  // Close download menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(event.target)) {
+        setShowDownloadMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Mirror the server's discount reference: the firm's saved normal price
-  // wins, falling back to the per (country, plan_type) reference price.
+  // wins, then the admin pricing (duration-aware), then reference_prices.
   const normalPrice = (() => {
     if (selectedFirm && Number(selectedFirm.normal_price) > 0) return Number(selectedFirm.normal_price);
+    if (pricing) {
+      const derived = normalPriceFromPricing(pricing, formData.homeCountry, formData.planType, formData.duration, formData.addonCountries);
+      if (derived > 0) return derived;
+    }
     const ref = referencePrices.find(r => r.country === formData.homeCountry && r.plan_type === formData.planType);
     return ref ? Number(ref.price_per_user_per_month) : null;
   })();
@@ -3656,6 +3680,45 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   const discountPct = normalPrice > 0 && formData.baseAmount > 0 && formData.baseAmount < normalPrice
     ? Math.round(((normalPrice - formData.baseAmount) / normalPrice) * 10000) / 100
     : null;
+
+  // Live amounts, mirroring the server's calculateAmounts
+  const durationMonths = parseInt(formData.duration, 10) || 1;
+  const liveAmounts = (() => {
+    const base = (Number(formData.baseAmount) || 0) * Math.max(1, parseInt(formData.numUsers) || 1) * durationMonths;
+    if (formData.homeCountry === 'nigeria') {
+      const vat = base * 0.075;
+      return { subtotal: base, gtfl: 0, nihl: 0, vat, total: base + vat };
+    }
+    const gtfl = base * 0.025;
+    const nihl = base * 0.025;
+    const vat = base * 0.15;
+    return { subtotal: base, gtfl, nihl, vat, total: base + gtfl + nihl + vat };
+  })();
+
+  // Things that are probably mistakes; surfaced in the summary and
+  // require explicit confirmation before generating or sending.
+  const anomalies = (() => {
+    if (!selectedFirm) return [];
+    const list = [];
+    if (!(Number(formData.baseAmount) > 0)) list.push('Special price is 0 — the invoice total will be 0.');
+    if ((parseInt(formData.numUsers) || 0) < 1) list.push('Number of users is less than 1.');
+    if (formData.dueDate) {
+      const due = new Date(formData.dueDate);
+      const today = new Date();
+      due.setHours(0, 0, 0, 0);
+      today.setHours(0, 0, 0, 0);
+      if (due < today) list.push(`Due date (${formatDate(formData.dueDate)}) is in the past.`);
+    }
+    return list;
+  })();
+
+  // "From profile" provenance hint; amber when the value diverges.
+  const profileHint = (same, profileLabel) => selectedFirm ? (
+    <small style={{ marginTop: '0.25rem', display: 'block', color: same ? '#94a3b8' : '#b45309', fontWeight: same ? 'normal' : 500 }}>
+      {same ? 'From profile' : `Profile: ${profileLabel}`}
+    </small>
+  ) : null;
+  const normAddons = (raw) => parseAddons(raw).slice().sort().join(',');
 
   const validateEmail = (email) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -3717,23 +3780,23 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           homeCountry: firm.home_country || 'ghana',
           addonCountries: firm.addon_countries || ''
         }));
+        setCustomDuration(!PRICING_DURATIONS.includes(parseInt(firm.plan_duration, 10) || 12));
       }
     }
   }, [formData.firmId, firms]);
 
-  const handlePreview = async () => {
-    if (!formData.firmId) {
-      addToast('Please select a law firm', 'error');
-      return;
+  const confirmAndDownload = async (format) => {
+    if (anomalies.length > 0) {
+      const ok = await confirm({
+        title: 'Check before generating',
+        message: anomalies.join('\n'),
+        confirmText: 'Generate anyway',
+        cancelText: 'Go back',
+        type: 'warning'
+      });
+      if (!ok) return;
     }
-    setLoadingAction('preview');
-    try {
-      const data = await api.previewInvoice(formData);
-      setPreview(data);
-    } catch (error) {
-      addToast(error.message, 'error');
-    }
-    setLoadingAction(null);
+    handleDownload(format);
   };
 
   const handleDownload = async (format = 'docx') => {
@@ -3821,6 +3884,18 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             ))}
           </select>
         </div>
+      </div>
+
+      {!selectedFirm && (
+        <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+          Select a law firm to start an invoice. Plan, pricing, duration, and recipients are prefilled from its profile.
+        </div>
+      )}
+
+      {selectedFirm && (
+      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <div style={{ flex: '1 1 480px', minWidth: 0 }}>
+      <div className="form-grid">
         <div className="form-group">
           <label>Plan Type</label>
           <select
@@ -3831,6 +3906,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             <option value="standard">Standard Plan</option>
             <option value="plus">Plus Plan</option>
           </select>
+          {profileHint(formData.planType === (selectedFirm.plan_type || 'standard'), PRICING_PLAN_LABELS[selectedFirm.plan_type] || 'Standard')}
         </div>
         <div className="form-group">
           <label>Home Country</label>
@@ -3848,27 +3924,47 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             <option value="ghana">Ghana</option>
             <option value="nigeria">Nigeria</option>
           </select>
-        </div>
-        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-          <label>Addon Countries</label>
-          <AddonCountriesPicker
-            homeCountry={formData.homeCountry}
-            value={formData.addonCountries}
-            onChange={(v) => setFormData({ ...formData, addonCountries: v })}
-          />
+          {profileHint(formData.homeCountry === (selectedFirm.home_country || 'ghana'), COUNTRY_LABELS[selectedFirm.home_country || 'ghana'])}
         </div>
         <div className="form-group">
-          <label>Duration (Months)</label>
-          <input
-            type="number"
-            min="1"
-            max="60"
-            value={parseInt(formData.duration) || 12}
+          <label>Billing Cycle</label>
+          <select
+            value={customDuration ? '__custom__' : String(durationMonths)}
             onChange={e => {
-              const val = parseInt(e.target.value) || 1;
+              const v = e.target.value;
+              if (v === '__custom__') {
+                setCustomDuration(true);
+                return;
+              }
+              setCustomDuration(false);
+              const val = parseInt(v, 10);
               setFormData({ ...formData, duration: val === 1 ? '1 month' : `${val} months` });
             }}
-          />
+          >
+            <option value="1">Monthly</option>
+            <option value="3">3 Months</option>
+            <option value="6">6 Months</option>
+            <option value="12">12 Months (Annual)</option>
+            <option value="__custom__">Custom...</option>
+          </select>
+          {customDuration && (
+            <input
+              type="number"
+              min="1"
+              max="60"
+              value={durationMonths}
+              onChange={e => {
+                const val = parseInt(e.target.value) || 1;
+                setFormData({ ...formData, duration: val === 1 ? '1 month' : `${val} months` });
+              }}
+              placeholder="Number of months"
+              style={{ marginTop: '0.5rem' }}
+            />
+          )}
+          {(() => {
+            const profileMonths = parseInt(selectedFirm.plan_duration, 10) || 12;
+            return profileHint(durationMonths === profileMonths, `${profileMonths} month${profileMonths === 1 ? '' : 's'}`);
+          })()}
         </div>
         <div className="form-group">
           <label>Number of Users</label>
@@ -3878,6 +3974,19 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             value={formData.numUsers}
             onChange={e => setFormData({ ...formData, numUsers: parseInt(e.target.value) || 1 })}
           />
+          {profileHint((parseInt(formData.numUsers) || 1) === (selectedFirm.num_users || 1), String(selectedFirm.num_users || 1))}
+        </div>
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <label>Addon Countries</label>
+          <AddonCountriesPicker
+            homeCountry={formData.homeCountry}
+            value={formData.addonCountries}
+            onChange={(v) => setFormData({ ...formData, addonCountries: v })}
+          />
+          {profileHint(
+            normAddons(formData.addonCountries) === normAddons(selectedFirm.addon_countries),
+            parseAddons(selectedFirm.addon_countries).length > 0 ? parseAddons(selectedFirm.addon_countries).join(', ') : 'no addons'
+          )}
         </div>
         <div className="form-group">
           <label>Special Price per User per Month ({priceCurrency})</label>
@@ -3897,16 +4006,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
                   : `Above the normal price (${priceCurrency} ${normalPrice.toFixed(2)})`}
             </small>
           )}
-        </div>
-        <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '1.5rem' }}>
-            <input
-              type="checkbox"
-              checked={formData.includeUnitCost}
-              onChange={e => setFormData({ ...formData, includeUnitCost: e.target.checked })}
-            />
-            Include unit cost (per-user price + discount)
-          </label>
+          {profileHint(Number(formData.baseAmount) === Number(selectedFirm.base_price || 0), `${priceCurrency} ${Number(selectedFirm.base_price || 0).toFixed(2)}`)}
         </div>
         <div className="form-group">
           <label>Due Date</label>
@@ -3916,6 +4016,17 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
           />
           {formData.dueDate && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(formData.dueDate)}</small>}
+        </div>
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={formData.includeUnitCost}
+              onChange={e => setFormData({ ...formData, includeUnitCost: e.target.checked })}
+              style={{ width: 'auto', margin: 0 }}
+            />
+            Show per-user price and discount on the invoice
+          </label>
         </div>
       </div>
 
@@ -4038,122 +4149,108 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
         </div>
       )}
 
-      <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
-        <Tooltip text="Preview invoice amounts before generating">
-          <LoadingButton
-            className="btn btn-secondary"
-            onClick={handlePreview}
-            loading={loadingAction === 'preview'}
-            disabled={loadingAction !== null}
-          >
-            Preview
-          </LoadingButton>
-        </Tooltip>
-        <Tooltip text="Generate and download invoice as PDF">
-          <LoadingButton
-            className="btn"
-            onClick={() => handleDownload('pdf')}
-            loading={loadingAction === 'pdf'}
-            disabled={loadingAction !== null}
-            style={{ background: '#dc2626', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"/>
-            </svg>
-            Download PDF
-          </LoadingButton>
-        </Tooltip>
-        <Tooltip text="Generate and download invoice as Word document">
-          <LoadingButton
-            className="btn"
-            onClick={() => handleDownload('docx')}
-            loading={loadingAction === 'docx'}
-            disabled={loadingAction !== null}
-            style={{ background: '#2b579a', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13zm-4 5.5l1.1 4.5h.8l.9-3 .9 3h.8l1.1-4.5h-1l-.6 2.8-.9-2.8h-.6l-.9 2.8-.6-2.8H9z"/>
-            </svg>
-            Download Word
-          </LoadingButton>
-        </Tooltip>
-        <Tooltip text="Generate PDF and send via email">
-          <LoadingButton
-            className="btn"
-            onClick={handleSend}
-            loading={loadingAction === 'send'}
-            disabled={loadingAction !== null}
-            style={{ background: '#059669', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-            Generate & Send
-          </LoadingButton>
-        </Tooltip>
       </div>
 
-      {preview && (
-        <div className="preview-box">
-          <h4 style={{ marginBottom: '1rem', color: '#1e40af' }}>Invoice Preview</h4>
-          <div className="preview-row">
-            <span className="preview-label">Invoice Number</span>
-            <span className="preview-value">{preview.invoiceNumber}</span>
+      {/* Live invoice summary */}
+      <div style={{ flex: '0 1 320px', minWidth: '280px', position: 'sticky', top: '1rem' }}>
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem' }}>
+          <h4 style={{ margin: '0 0 1rem', color: '#1e40af' }}>Invoice Summary</h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.375rem', color: '#475569' }}>
+            <span>{PRICING_PLAN_LABELS[formData.planType] || 'Standard'} plan</span>
+            <span>{durationMonths} month{durationMonths === 1 ? '' : 's'}</span>
           </div>
-          <div className="preview-row">
-            <span className="preview-label">Firm</span>
-            <span className="preview-value">{preview.firm?.firm_name}</span>
+          <div style={{ fontSize: '0.875rem', marginBottom: '0.375rem', color: '#475569' }}>
+            {Math.max(1, parseInt(formData.numUsers) || 1)} user{(parseInt(formData.numUsers) || 1) === 1 ? '' : 's'} × {priceCurrency} {Number(formData.baseAmount || 0).toFixed(2)}/user/month
           </div>
-          <div className="preview-row">
-            <span className="preview-label">Plan</span>
-            <span className="preview-value">{preview.planType === 'plus' ? 'Plus' : 'Standard'}</span>
+          {discountPct != null && (
+            <div style={{ fontSize: '0.8rem', color: '#059669', marginBottom: '0.375rem' }}>
+              {discountPct}% off the normal price ({priceCurrency} {normalPrice.toFixed(2)})
+            </div>
+          )}
+          <div style={{ borderTop: '1px solid #e2e8f0', margin: '0.75rem 0' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+            <span style={{ color: '#64748b' }}>Subtotal</span>
+            <span>{formatCurrency(liveAmounts.subtotal, priceCurrency)}</span>
           </div>
-          <div className="preview-row">
-            <span className="preview-label">Duration</span>
-            <span className="preview-value">{preview.duration}</span>
-          </div>
-          <div className="preview-row">
-            <span className="preview-label">Users</span>
-            <span className="preview-value">{preview.numUsers}</span>
-          </div>
-          <div className="preview-row">
-            <span className="preview-label">Subtotal</span>
-            <span className="preview-value">{formatCurrency(preview.subtotal, preview.currency)}</span>
-          </div>
-          {preview.homeCountry !== 'nigeria' && (
+          {formData.homeCountry !== 'nigeria' ? (
             <>
-              <div className="preview-row">
-                <span className="preview-label">GTFL (2.5%)</span>
-                <span className="preview-value">{formatCurrency(preview.gtfl, preview.currency)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#64748b' }}>
+                <span>GTFL (2.5%)</span>
+                <span>{formatCurrency(liveAmounts.gtfl, priceCurrency)}</span>
               </div>
-              <div className="preview-row">
-                <span className="preview-label">NIHL (2.5%)</span>
-                <span className="preview-value">{formatCurrency(preview.nihl, preview.currency)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#64748b' }}>
+                <span>NIHL (2.5%)</span>
+                <span>{formatCurrency(liveAmounts.nihl, priceCurrency)}</span>
               </div>
-              <div className="preview-row">
-                <span className="preview-label">VAT (15%)</span>
-                <span className="preview-value">{formatCurrency(preview.vat, preview.currency)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#64748b' }}>
+                <span>VAT (15%)</span>
+                <span>{formatCurrency(liveAmounts.vat, priceCurrency)}</span>
               </div>
             </>
-          )}
-          {preview.homeCountry === 'nigeria' && (
-            <div className="preview-row">
-              <span className="preview-label">VAT (7.5%)</span>
-              <span className="preview-value">{formatCurrency(preview.vat, preview.currency)}</span>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#64748b' }}>
+              <span>VAT (7.5%)</span>
+              <span>{formatCurrency(liveAmounts.vat, priceCurrency)}</span>
             </div>
           )}
-          {preview.unitCostLine && (
-            <div className="preview-row">
-              <span className="preview-label">Per User</span>
-              <span className="preview-value">{preview.unitCostLine}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '1.05rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.625rem', marginTop: '0.625rem', color: '#1e40af' }}>
+            <span>Total</span>
+            <span>{formatCurrency(liveAmounts.total, priceCurrency)}</span>
+          </div>
+
+          {anomalies.length > 0 && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', borderRadius: '6px', padding: '0.625rem 0.75rem', fontSize: '0.8rem', margin: '0.875rem 0 0' }}>
+              {anomalies.map((a, i) => (
+                <div key={i} style={{ marginBottom: i < anomalies.length - 1 ? '0.25rem' : 0 }}>⚠ {a}</div>
+              ))}
             </div>
           )}
-          <div className="preview-row">
-            <span className="preview-label">Total</span>
-            <span className="preview-value" style={{ color: '#1e40af', fontSize: '1.125rem' }}>{formatCurrency(preview.total, preview.currency)}</span>
+
+          <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <LoadingButton
+              className="btn btn-primary"
+              onClick={handleSend}
+              loading={loadingAction === 'send'}
+              disabled={loadingAction !== null}
+              style={{ width: '100%', background: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+              Generate &amp; Send
+            </LoadingButton>
+            <div style={{ position: 'relative' }} ref={downloadMenuRef}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                disabled={loadingAction !== null}
+                style={{ width: '100%' }}
+              >
+                {loadingAction === 'pdf' || loadingAction === 'docx' ? 'Generating...' : 'Download ▾'}
+              </button>
+              {showDownloadMenu && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 20, overflow: 'hidden' }}>
+                  <button
+                    onClick={() => { setShowDownloadMenu(false); confirmAndDownload('pdf'); }}
+                    style={{ display: 'block', width: '100%', padding: '0.625rem 0.75rem', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
+                  >
+                    PDF document
+                  </button>
+                  <button
+                    onClick={() => { setShowDownloadMenu(false); confirmAndDownload('docx'); }}
+                    style={{ display: 'block', width: '100%', padding: '0.625rem 0.75rem', background: 'none', border: 'none', borderTop: '1px solid #f1f5f9', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
+                  >
+                    Word document
+                  </button>
+                </div>
+              )}
+            </div>
+            <small style={{ color: '#94a3b8', textAlign: 'center' }}>Downloads also save the invoice as a draft</small>
           </div>
         </div>
+      </div>
+      </div>
       )}
 
       {/* Send Invoice Dialog */}
@@ -4196,6 +4293,24 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
                 </div>
               )}
             </div>
+
+            {/* Amount summary */}
+            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.875rem', textAlign: 'left' }}>
+              <div style={{ color: '#0369a1', marginBottom: '0.25rem' }}>
+                {Math.max(1, parseInt(formData.numUsers) || 1)} user{(parseInt(formData.numUsers) || 1) === 1 ? '' : 's'} × {durationMonths} month{durationMonths === 1 ? '' : 's'} × {priceCurrency} {Number(formData.baseAmount || 0).toFixed(2)}
+              </div>
+              <div style={{ fontWeight: 600 }}>
+                Total (incl. taxes): {formatCurrency(liveAmounts.total, priceCurrency)}
+              </div>
+            </div>
+
+            {anomalies.length > 0 && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', textAlign: 'left' }}>
+                {anomalies.map((a, i) => (
+                  <div key={i} style={{ marginBottom: i < anomalies.length - 1 ? '0.25rem' : 0 }}>⚠ {a}</div>
+                ))}
+              </div>
+            )}
 
             {/* Email customization fields */}
             <div style={{ textAlign: 'left', marginBottom: '1rem' }}>
@@ -4483,7 +4598,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     if (immediateFirms.length > 0) {
       const firmDetails = immediateFirms.map(firm => {
         const scheduleDate = calculateScheduleDate(firm.subscription_end);
-        return `• ${firm.firm_name} (${firm.plan_type === 'plus' ? 'Plus' : 'Standard'}, ${firm.plan_duration || '12 months'}, ${formatCurrency(firm.base_price || 0)}) - Schedule: ${formatDate(scheduleDate)}`;
+        return `• ${firm.firm_name} (${planLabel(firm.plan_type)}, ${firm.plan_duration || '12 months'}, ${formatCurrency(firm.base_price || 0)}) - Schedule: ${formatDate(scheduleDate)}`;
       }).join('\n');
 
       const confirmed = await confirm({
@@ -4636,7 +4751,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                     <td>{formatDate(item.subscription_end)}</td>
                     <td>
                       <span className={`badge ${item.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
-                        {item.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                        {planLabel(item.plan_type)}
                       </span>
                     </td>
                     <td>{item.duration}</td>
@@ -4863,7 +4978,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                         <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           {firm.firm_name}
                           <span className={`badge ${firm.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`} style={{ fontSize: '0.65rem' }}>
-                            {firm.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                            {planLabel(firm.plan_type)}
                           </span>
                           {isImmediate && (
                             <span className="badge badge-red" style={{ fontSize: '0.65rem' }}>Immediate</span>
@@ -4904,7 +5019,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
 }
 
 // Invoice History Section
-function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavigateToGenerate }) {
+function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavigateToGenerate, limit = null, onViewAll = null, title = 'Invoice History' }) {
   const [loading, setLoading] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -4913,9 +5028,20 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   const [selectedInvoices, setSelectedInvoices] = useState(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [openActionMenu, setOpenActionMenu] = useState(null);
+  const [detailInvoice, setDetailInvoice] = useState(null);
   const itemsPerPage = 10;
   const { addToast } = useToast();
   const confirm = useConfirm();
+
+  // Close any open row action menu when clicking elsewhere
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.row-action-menu')) setOpenActionMenu(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Filter invoices
   const filteredInvoices = invoices.filter(inv => {
@@ -4926,12 +5052,14 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     return matchesSearch && matchesStatus && matchesPlan;
   });
 
-  // Pagination
+  // Pagination (or a fixed "recent N" slice when limit is set)
   const totalPages = Math.ceil(filteredInvoices.length / itemsPerPage);
-  const paginatedInvoices = filteredInvoices.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const paginatedInvoices = limit
+    ? filteredInvoices.slice(0, limit)
+    : filteredInvoices.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+      );
 
   // Reset to first page when filters change
   useEffect(() => {
@@ -5241,6 +5369,46 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
         </div>
       )}
 
+      {/* Invoice Detail Modal */}
+      {detailInvoice && (() => {
+        const ccy = detailInvoice.home_country === 'nigeria' ? 'NGN' : 'GHS';
+        const row = (label, value) => (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem' }}>
+            <span style={{ color: '#64748b' }}>{label}</span>
+            <span style={{ textAlign: 'right' }}>{value}</span>
+          </div>
+        );
+        return (
+          <Modal isOpen={true} onClose={() => setDetailInvoice(null)} title={`Invoice ${detailInvoice.invoice_number}`}>
+            <div className="modal-body">
+              {row('Firm', detailInvoice.firm_name)}
+              {row('Status', detailInvoice.status)}
+              {row('Plan', planLabel(detailInvoice.plan_type))}
+              {row('Duration', detailInvoice.duration)}
+              {row('Users', detailInvoice.num_users)}
+              {row('Price per user/month', formatCurrency(detailInvoice.base_amount, ccy))}
+              {detailInvoice.discount_pct != null && detailInvoice.reference_price != null &&
+                row('Discount', `${Number(detailInvoice.discount_pct)}% off ${formatCurrency(detailInvoice.reference_price, ccy)}`)}
+              {row('Subtotal', formatCurrency(detailInvoice.subtotal, ccy))}
+              {detailInvoice.home_country !== 'nigeria' && row('GTFL (2.5%)', formatCurrency(detailInvoice.gtfl, ccy))}
+              {detailInvoice.home_country !== 'nigeria' && row('NIHL (2.5%)', formatCurrency(detailInvoice.nihl, ccy))}
+              {row(detailInvoice.home_country === 'nigeria' ? 'VAT (7.5%)' : 'VAT (15%)', formatCurrency(detailInvoice.vat, ccy))}
+              {row('Total', <strong>{formatCurrency(detailInvoice.total, ccy)}</strong>)}
+              {row('Due date', formatDate(detailInvoice.due_date))}
+              {detailInvoice.sent_at && row('Sent', formatDate(detailInvoice.sent_at))}
+              {detailInvoice.addon_countries && row('Addons', detailInvoice.addon_countries)}
+              {detailInvoice.additional_emails && row('Extra recipients', detailInvoice.additional_emails)}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setDetailInvoice(null)}>Close</button>
+              <button className="btn btn-primary" onClick={() => { handleDownload(detailInvoice.id, detailInvoice.invoice_number, 'pdf'); }}>
+                Download PDF
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
+
       {/* Edit Draft Invoice Modal */}
       {editingInvoice && (
         <div className="modal-overlay" onClick={() => setEditingInvoice(null)}>
@@ -5352,8 +5520,13 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
 
       <div className="card">
       <div className="card-header">
-        <h2 className="card-title">Invoice History</h2>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <h2 className="card-title">{title}</h2>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {onViewAll && (
+            <button className="btn btn-secondary" onClick={onViewAll} style={{ fontSize: '0.875rem' }}>
+              View all →
+            </button>
+          )}
           {selectedInvoices.size > 0 && (
             <button
               className="btn-danger"
@@ -5444,6 +5617,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
             <option value="paid">Paid</option>
+            <option value="inactive">Inactive</option>
           </select>
           <select
             className="filter-select"
@@ -5451,6 +5625,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
             onChange={e => setPlanFilter(e.target.value)}
           >
             <option value="all">All Plans</option>
+            <option value="student">Student</option>
             <option value="standard">Standard</option>
             <option value="plus">Plus</option>
           </select>
@@ -5502,7 +5677,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                   <th>Firm</th>
                   <th>Plan</th>
                   <th>Users</th>
-                  <th>Total</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
                   <th>Due Date</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -5511,9 +5686,15 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               <tbody>
                 {paginatedInvoices.map(inv => {
                   const dueDateStatus = getDueDateStatus(inv.due_date);
+                  const menuItemStyle = { display: 'block', width: '100%', padding: '0.5rem 0.875rem', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', color: '#334155' };
                   return (
-                    <tr key={inv.id} className={selectedInvoices.has(inv.id) ? 'selected-row' : ''}>
-                      <td>
+                    <tr
+                      key={inv.id}
+                      className={selectedInvoices.has(inv.id) ? 'selected-row' : ''}
+                      onClick={() => setDetailInvoice(inv)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td onClick={e => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedInvoices.has(inv.id)}
@@ -5525,11 +5706,13 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                       <td>{inv.firm_name}</td>
                       <td>
                         <span className={`badge ${inv.plan_type === 'plus' ? 'badge-blue' : 'badge-gray'}`}>
-                          {inv.plan_type === 'plus' ? 'Plus' : 'Standard'}
+                          {planLabel(inv.plan_type)}
                         </span>
                       </td>
                       <td>{inv.num_users}</td>
-                      <td>{formatCurrency(inv.total)}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(inv.total, inv.home_country === 'nigeria' ? 'NGN' : 'GHS')}
+                      </td>
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span>{formatDate(inv.due_date)}</span>
@@ -5550,12 +5733,13 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                           {inv.status}
                         </span>
                       </td>
-                      <td>
+                      <td onClick={e => e.stopPropagation()}>
                         <div className="action-buttons">
                           {inv.status === 'draft' && (
                             <Tooltip text="Edit draft invoice">
                               <button
                                 className="action-btn action-btn-edit"
+                                aria-label="Edit draft invoice"
                                 onClick={() => handleEditDraft(inv)}
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -5568,6 +5752,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                           <Tooltip text="Download as PDF">
                             <button
                               className="action-btn action-btn-pdf"
+                              aria-label="Download as PDF"
                               onClick={() => handleDownload(inv.id, inv.invoice_number, 'pdf')}
                               disabled={loading[`${inv.id}-pdf`]}
                             >
@@ -5581,26 +5766,10 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                               )}
                             </button>
                           </Tooltip>
-                          <Tooltip text="Download as Word document">
-                            <button
-                              className="action-btn action-btn-docx"
-                              onClick={() => handleDownload(inv.id, inv.invoice_number, 'docx')}
-                              disabled={loading[`${inv.id}-docx`]}
-                            >
-                              {loading[`${inv.id}-docx`] ? '...' : (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                  <polyline points="14 2 14 8 20 8"/>
-                                  <line x1="16" y1="13" x2="8" y2="13"/>
-                                  <line x1="16" y1="17" x2="8" y2="17"/>
-                                  <line x1="10" y1="9" x2="8" y2="9"/>
-                                </svg>
-                              )}
-                            </button>
-                          </Tooltip>
                           <Tooltip text="Send invoice via email">
                             <button
                               className="action-btn action-btn-send"
+                              aria-label="Send invoice via email"
                               onClick={() => handleSend(inv)}
                               disabled={loading[inv.id]}
                             >
@@ -5616,6 +5785,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                             <Tooltip text="Mark as paid">
                               <button
                                 className="action-btn action-btn-paid"
+                                aria-label="Mark as paid"
                                 onClick={() => handleMarkPaid(inv.id, inv.invoice_number)}
                                 disabled={loading[`${inv.id}-paid`]}
                               >
@@ -5628,45 +5798,11 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                               </button>
                             </Tooltip>
                           )}
-                          {inv.status === 'paid' && (
-                            <Tooltip text="Mark as unpaid">
-                              <button
-                                className="action-btn action-btn-unpaid"
-                                onClick={() => handleMarkUnpaid(inv.id, inv.invoice_number)}
-                                disabled={loading[`${inv.id}-unpaid`]}
-                              >
-                                {loading[`${inv.id}-unpaid`] ? '...' : (
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="12" r="10"/>
-                                    <line x1="15" y1="9" x2="9" y2="15"/>
-                                    <line x1="9" y1="9" x2="15" y2="15"/>
-                                  </svg>
-                                )}
-                              </button>
-                            </Tooltip>
-                          )}
-                          {inv.status === 'sent' && (
-                            <Tooltip text="Mark as inactive (superseded)">
-                              <button
-                                className="action-btn"
-                                style={{ background: '#f59e0b', color: 'white' }}
-                                onClick={() => handleMarkInactive(inv.id, inv.invoice_number)}
-                                disabled={loading[`${inv.id}-inactive`]}
-                              >
-                                {loading[`${inv.id}-inactive`] ? '...' : (
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M21 8v13H3V8"/>
-                                    <path d="M1 3h22v5H1z"/>
-                                    <path d="M10 12h4"/>
-                                  </svg>
-                                )}
-                              </button>
-                            </Tooltip>
-                          )}
                           {inv.status === 'inactive' && (
                             <Tooltip text="Reactivate invoice">
                               <button
                                 className="action-btn"
+                                aria-label="Reactivate invoice"
                                 style={{ background: '#8b5cf6', color: 'white' }}
                                 onClick={() => handleReactivate(inv.id, inv.invoice_number)}
                                 disabled={loading[`${inv.id}-active`]}
@@ -5681,6 +5817,42 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                               </button>
                             </Tooltip>
                           )}
+                          <div className="row-action-menu" style={{ position: 'relative', display: 'inline-block' }}>
+                            <Tooltip text="More actions">
+                              <button
+                                className="action-btn"
+                                aria-label="More actions"
+                                style={{ background: '#e2e8f0', color: '#475569' }}
+                                onClick={() => setOpenActionMenu(openActionMenu === inv.id ? null : inv.id)}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                  <circle cx="5" cy="12" r="2"/>
+                                  <circle cx="12" cy="12" r="2"/>
+                                  <circle cx="19" cy="12" r="2"/>
+                                </svg>
+                              </button>
+                            </Tooltip>
+                            {openActionMenu === inv.id && (
+                              <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: '4px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 30, minWidth: '180px', overflow: 'hidden' }}>
+                                <button style={menuItemStyle} onClick={() => { setOpenActionMenu(null); setDetailInvoice(inv); }}>
+                                  View details
+                                </button>
+                                <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleDownload(inv.id, inv.invoice_number, 'docx'); }}>
+                                  Download Word
+                                </button>
+                                {inv.status === 'sent' && (
+                                  <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleMarkInactive(inv.id, inv.invoice_number); }}>
+                                    Mark as inactive
+                                  </button>
+                                )}
+                                {inv.status === 'paid' && (
+                                  <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleMarkUnpaid(inv.id, inv.invoice_number); }}>
+                                    Mark as unpaid
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -5691,7 +5863,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
           </div>
 
           {/* Pagination */}
-          {showFilters && (
+          {showFilters && !limit && (
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -7054,22 +7226,21 @@ function AppContent() {
               onClick={() => setActiveTab('dashboard')}
             >
               Dashboard
-              {(overdueCount + expiringCount) > 0 && <span className={`nav-badge ${overdueCount > 0 ? 'nav-badge-danger' : 'nav-badge-warning'}`}>{overdueCount + expiringCount}</span>}
             </button>
             <button
               className={`nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
               onClick={() => setActiveTab('generate')}
+              title="New invoice (Ctrl+N)"
             >
               Generate
-              <span className="shortcut-hint"><span className="shortcut-key">Ctrl</span>+<span className="shortcut-key">N</span></span>
             </button>
             <button
               className={`nav-btn ${activeTab === 'firms' ? 'active' : ''}`}
               onClick={() => setActiveTab('firms')}
+              title={`Law Firms (Ctrl+F)${expiringCount > 0 ? ` — ${expiringCount} subscription${expiringCount === 1 ? '' : 's'} expiring within 30 days` : ''}`}
             >
               Law Firms
               {expiringCount > 0 && <span className="nav-badge nav-badge-warning">{expiringCount}</span>}
-              <span className="shortcut-hint"><span className="shortcut-key">Ctrl</span>+<span className="shortcut-key">F</span></span>
             </button>
             <button
               className={`nav-btn ${activeTab === 'scheduled' ? 'active' : ''}`}
@@ -7080,10 +7251,10 @@ function AppContent() {
             <button
               className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`}
               onClick={() => setActiveTab('history')}
+              title={`History (Ctrl+H)${overdueCount > 0 ? ` — ${overdueCount} overdue invoice${overdueCount === 1 ? '' : 's'}` : ''}`}
             >
               History
               {overdueCount > 0 && <span className="nav-badge nav-badge-danger">{overdueCount}</span>}
-              <span className="shortcut-hint"><span className="shortcut-key">Ctrl</span>+<span className="shortcut-key">H</span></span>
             </button>
             <button
               className={`nav-btn ${activeTab === 'settings' ? 'active' : ''}`}
@@ -7129,7 +7300,14 @@ function AppContent() {
             {activeTab === 'generate' && (
               <>
                 <GenerateInvoiceSection firms={firms} onRefresh={loadData} />
-                <InvoiceHistorySection invoices={invoices} onRefresh={loadData} />
+                <InvoiceHistorySection
+                  invoices={invoices}
+                  onRefresh={loadData}
+                  showFilters={false}
+                  limit={5}
+                  title="Recent Invoices"
+                  onViewAll={() => setActiveTab('history')}
+                />
               </>
             )}
             {activeTab === 'firms' && (
