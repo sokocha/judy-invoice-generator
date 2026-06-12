@@ -2363,9 +2363,33 @@ const computeNormalPrice = (homeCountry, planType, addonCountries) => {
   return base + addonCount * (ADDON_LIST_PRICES[homeCountry] || 0);
 };
 
+// Cheapest list price for a custom period, combining published cycles
+// largest-first (e.g. 7 months = 6 months + 1 month). Returns null when
+// the period can't be covered (e.g. no monthly price published).
+const decomposeCyclePrice = (plans, months) => {
+  const cycles = plans
+    .map(p => ({ months: Number(p.duration_months), price: Number(p.price_per_user) }))
+    .sort((a, b) => b.months - a.months);
+  let remaining = months;
+  let total = 0;
+  const parts = [];
+  for (const c of cycles) {
+    while (remaining >= c.months) {
+      remaining -= c.months;
+      total += c.price;
+      parts.push(c.months);
+    }
+  }
+  if (remaining > 0 || parts.length === 0) return null;
+  return { total, parts };
+};
+
+const fmtPrice = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
 // Normal price per user per month from admin pricing: the exact billing
 // cycle's per-month rate when set (e.g. ghana standard 12 months =
-// 780/12 = 65), the monthly rate otherwise, plus priced addons.
+// 780/12 = 65), the cheapest cycle combination for custom periods,
+// plus priced addons.
 const normalPriceFromPricing = (pricing, homeCountry, planType, planDuration, addonCountries) => {
   const addonCount = parseAddons(addonCountries).filter(a => PRICED_ADDONS.includes(a)).length;
   const months = parseInt(planDuration, 10) || 1;
@@ -2373,14 +2397,43 @@ const normalPriceFromPricing = (pricing, homeCountry, planType, planDuration, ad
     ? pricing.plan_prices.filter(p => p.country === homeCountry && p.plan_type === planType)
     : [];
   const exact = plans.find(p => Number(p.duration_months) === months);
-  const monthly = plans.find(p => Number(p.duration_months) === 1);
-  if (!exact && !monthly) return computeNormalPrice(homeCountry, planType, addonCountries);
-  const base = exact ? Number(exact.price_per_user) / months : Number(monthly.price_per_user);
+  let base = null;
+  if (exact) {
+    base = Number(exact.price_per_user) / months;
+  } else {
+    const combo = decomposeCyclePrice(plans, months);
+    if (combo) base = combo.total / months;
+  }
+  if (base == null) return computeNormalPrice(homeCountry, planType, addonCountries);
   const addonRow = pricing && Array.isArray(pricing.addon_prices)
     ? pricing.addon_prices.find(a => a.country === homeCountry)
     : null;
   const addonRate = addonRow ? Number(addonRow.price_per_user_per_month) : (ADDON_LIST_PRICES[homeCountry] || 0);
   return Math.round((base + addonCount * addonRate) * 100) / 100;
+};
+
+// Human-readable explanation of how the normal price was derived.
+const describeNormalPrice = (pricing, homeCountry, planType, planDuration) => {
+  const months = parseInt(planDuration, 10) || 1;
+  const currency = homeCountry === 'nigeria' ? 'NGN' : 'GHS';
+  const plans = pricing && Array.isArray(pricing.plan_prices)
+    ? pricing.plan_prices.filter(p => p.country === homeCountry && p.plan_type === planType)
+    : [];
+  const exact = plans.find(p => Number(p.duration_months) === months);
+  if (exact) {
+    const total = Number(exact.price_per_user);
+    if (months === 1) return `Monthly list price: ${currency} ${fmtPrice(total)}/user`;
+    return `${months}-month list price: ${currency} ${fmtPrice(total)}/user (= ${currency} ${fmtPrice(Math.round((total / months) * 100) / 100)}/user/month)`;
+  }
+  const combo = decomposeCyclePrice(plans, months);
+  if (!combo) return null;
+  const counts = {};
+  combo.parts.forEach(m => { counts[m] = (counts[m] || 0) + 1; });
+  const partsLabel = Object.keys(counts).map(Number).sort((a, b) => b - a)
+    .map(m => `${counts[m] > 1 ? `${counts[m]} × ` : ''}${m === 1 ? '1 month' : `${m} months`}`)
+    .join(' + ');
+  const perMonth = Math.round((combo.total / months) * 100) / 100;
+  return `Custom ${months}-month period — list price ${currency} ${fmtPrice(combo.total)}/user, priced as ${partsLabel} (≈ ${currency} ${fmtPrice(perMonth)}/user/month)`;
 };
 
 function AddonCountriesPicker({ homeCountry, value, onChange }) {
@@ -2845,6 +2898,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   const [errors, setErrors] = useState({});
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' });
   const [customCity, setCustomCity] = useState(false);
+  const [customDuration, setCustomDuration] = useState(false);
   const [pricing, setPricing] = useState(null);
   const { addToast } = useToast();
 
@@ -2937,6 +2991,8 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   const handleOpenModal = (firm = null) => {
     setErrors({});
     setCustomCity(!!(firm && firm.city) && !countryForCity(firm.city));
+    const firmMonths = firm ? (parseInt(firm.plan_duration, 10) || 12) : 12;
+    setCustomDuration(!PRICING_DURATIONS.includes(firmMonths));
     if (firm) {
       setEditingFirm(firm);
       setFormData({
@@ -3434,14 +3490,17 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               />
             </div>
             <div className="form-group">
-              <label>Plan Duration (Months)</label>
-              <input
-                type="number"
-                min="1"
-                max="60"
-                value={parseInt(formData.plan_duration) || 12}
+              <label>Billing Cycle</label>
+              <select
+                value={customDuration ? '__custom__' : String(parseInt(formData.plan_duration) || 12)}
                 onChange={e => {
-                  const val = parseInt(e.target.value) || 1;
+                  const v = e.target.value;
+                  if (v === '__custom__') {
+                    setCustomDuration(true);
+                    return;
+                  }
+                  setCustomDuration(false);
+                  const val = parseInt(v, 10);
                   const nextDuration = val === 1 ? '1 month' : `${val} months`;
                   setFormData({
                     ...formData,
@@ -3449,7 +3508,33 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                     normal_price: listNormalPrice(formData.home_country, formData.plan_type, nextDuration, formData.addon_countries)
                   });
                 }}
-              />
+              >
+                <option value="1">Monthly</option>
+                <option value="3">3 Months</option>
+                <option value="6">6 Months</option>
+                <option value="12">12 Months (Annual)</option>
+                <option value="__custom__">Custom...</option>
+              </select>
+              {customDuration && (
+                <input
+                  type="number"
+                  min="1"
+                  max="60"
+                  value={parseInt(formData.plan_duration) || 12}
+                  onChange={e => {
+                    const val = parseInt(e.target.value) || 1;
+                    const nextDuration = val === 1 ? '1 month' : `${val} months`;
+                    setFormData({
+                      ...formData,
+                      plan_duration: nextDuration,
+                      normal_price: listNormalPrice(formData.home_country, formData.plan_type, nextDuration, formData.addon_countries)
+                    });
+                  }}
+                  placeholder="Number of months"
+                  style={{ marginTop: '0.5rem' }}
+                  autoFocus
+                />
+              )}
             </div>
             <div className="form-group">
               <label>Number of Users</label>
@@ -3470,7 +3555,8 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 onChange={e => setFormData({ ...formData, normal_price: parseFloat(e.target.value) || 0 })}
               />
               <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                Auto-filled from list pricing (plan + addons); edit to override
+                {describeNormalPrice(pricing, formData.home_country, formData.plan_type, formData.plan_duration)
+                  || 'Auto-filled from list pricing (plan + addons); edit to override'}
               </small>
               {errors.normal_price && <div className="form-error">{errors.normal_price}</div>}
             </div>
