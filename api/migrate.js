@@ -285,6 +285,24 @@ export default async function handler(req, res) {
     `;
     migrations.push('reference_prices_seed_ghana');
 
+    // Backfill normal_price for Plus firms from list pricing: GHS 400 /
+    // NGN 35,000 per user per month, plus GHS 20 / NGN 1,500 per
+    // country-database addon (Nigeria, Ghana, Kenya). USA/UK addons have
+    // no published price and add nothing. Only fills firms without a
+    // normal price so manually set values are never overwritten.
+    await sql`
+      UPDATE law_firms
+      SET normal_price =
+        CASE WHEN home_country = 'nigeria' THEN 35000 ELSE 400 END
+        + CASE WHEN home_country = 'nigeria' THEN 1500 ELSE 20 END * (
+            (CASE WHEN addon_countries LIKE '%The Federal Republic of Nigeria%' THEN 1 ELSE 0 END)
+          + (CASE WHEN addon_countries LIKE '%The Republic of Ghana%' THEN 1 ELSE 0 END)
+          + (CASE WHEN addon_countries LIKE '%The Republic of Kenya%' THEN 1 ELSE 0 END)
+        )
+      WHERE plan_type = 'plus' AND normal_price IS NULL
+    `;
+    migrations.push('plus_normal_price_backfill');
+
     return res.status(200).json({
       success: true,
       message: `Migration completed: ${migrations.join(', ')} columns processed`
