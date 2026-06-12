@@ -6764,25 +6764,38 @@ const emptyPricingGrid = () => {
   return { plans, addon: '' };
 };
 
+// Map API pricing rows into the editable grid shape.
+const buildPricingGrid = (data) => {
+  const next = { ghana: emptyPricingGrid(), nigeria: emptyPricingGrid() };
+  ((data && data.plan_prices) || []).forEach(p => {
+    const country = next[p.country];
+    if (country && country.plans[p.plan_type] && country.plans[p.plan_type][p.duration_months] !== undefined) {
+      country.plans[p.plan_type][p.duration_months] = String(Number(p.price_per_user));
+    }
+  });
+  ((data && data.addon_prices) || []).forEach(a => {
+    if (next[a.country]) next[a.country].addon = String(Number(a.price_per_user_per_month));
+  });
+  return next;
+};
+
 function PricingSection() {
   const [grid, setGrid] = useState({ ghana: emptyPricingGrid(), nigeria: emptyPricingGrid() });
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const { addToast } = useToast();
 
   useEffect(() => {
-    api.getPricing().then(data => {
-      const next = { ghana: emptyPricingGrid(), nigeria: emptyPricingGrid() };
-      (data.plan_prices || []).forEach(p => {
-        const country = next[p.country];
-        if (country && country.plans[p.plan_type] && country.plans[p.plan_type][p.duration_months] !== undefined) {
-          country.plans[p.plan_type][p.duration_months] = String(Number(p.price_per_user));
+    api.getPricing()
+      .then(data => {
+        if (data && data.error) {
+          setLoadError(data.error);
+          return;
         }
-      });
-      (data.addon_prices || []).forEach(a => {
-        if (next[a.country]) next[a.country].addon = String(Number(a.price_per_user_per_month));
-      });
-      setGrid(next);
-    }).catch(() => {});
+        setLoadError(null);
+        setGrid(buildPricingGrid(data));
+      })
+      .catch(err => setLoadError(err.message || 'Network error'));
   }, []);
 
   const setPlanPrice = (country, plan, months, value) => {
@@ -6822,10 +6835,14 @@ function PricingSection() {
     });
     setLoading(true);
     try {
-      await api.savePricing({ plan_prices, addon_prices });
+      const result = await api.savePricing({ plan_prices, addon_prices });
+      if (result && result.error) throw new Error(result.error);
+      // Repopulate from what the server actually stored.
+      setGrid(buildPricingGrid(result));
+      setLoadError(null);
       addToast('Pricing saved!', 'success');
     } catch (error) {
-      addToast(error.message, 'error');
+      addToast(`Failed to save pricing: ${error.message}`, 'error');
     }
     setLoading(false);
   };
@@ -6841,6 +6858,13 @@ function PricingSection() {
         cycle isn't offered. These prices drive the Normal Price auto-fill on firm profiles
         and the discount shown on invoices.
       </p>
+      {loadError && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
+          Couldn't load saved pricing: {loadError}. If the pricing tables haven't been created yet,
+          run the migration (POST /api/migrate) and reload this page. Values saved while this
+          message is showing may not have been stored.
+        </div>
+      )}
       {['ghana', 'nigeria'].map(country => {
         const currency = country === 'nigeria' ? 'NGN' : 'GHS';
         return (
