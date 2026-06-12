@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS law_firms (
   num_users INTEGER DEFAULT 1,
   subscription_start DATE,
   subscription_end DATE,
+  normal_price DECIMAL(12,2),
   base_price DECIMAL(10,2) DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -49,6 +50,14 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'law_firms' AND column_name = 'plan_duration') THEN
     ALTER TABLE law_firms ADD COLUMN plan_duration VARCHAR(50) DEFAULT '12 months';
+  END IF;
+END $$;
+
+-- Add normal_price column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'law_firms' AND column_name = 'normal_price') THEN
+    ALTER TABLE law_firms ADD COLUMN normal_price DECIMAL(12,2);
   END IF;
 END $$;
 

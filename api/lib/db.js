@@ -19,8 +19,8 @@ export async function getFirmById(id) {
 
 export async function createFirm(firm) {
   const rows = await sql`
-    INSERT INTO law_firms (firm_name, street_address, city, email, cc_emails, bcc_emails, include_default_bcc, plan_type, plan_duration, num_users, subscription_start, subscription_end, base_price, home_country, addon_countries)
-    VALUES (${firm.firm_name}, ${firm.street_address}, ${firm.city}, ${firm.email}, ${firm.cc_emails || null}, ${firm.bcc_emails || null}, ${firm.include_default_bcc !== false}, ${firm.plan_type || 'standard'}, ${firm.plan_duration || '12 months'}, ${firm.num_users || 1}, ${firm.subscription_start || null}, ${firm.subscription_end || null}, ${firm.base_price || 0}, ${firm.home_country || 'ghana'}, ${firm.addon_countries || null})
+    INSERT INTO law_firms (firm_name, street_address, city, email, cc_emails, bcc_emails, include_default_bcc, plan_type, plan_duration, num_users, subscription_start, subscription_end, normal_price, base_price, home_country, addon_countries)
+    VALUES (${firm.firm_name}, ${firm.street_address}, ${firm.city}, ${firm.email}, ${firm.cc_emails || null}, ${firm.bcc_emails || null}, ${firm.include_default_bcc !== false}, ${firm.plan_type || 'standard'}, ${firm.plan_duration || '12 months'}, ${firm.num_users || 1}, ${firm.subscription_start || null}, ${firm.subscription_end || null}, ${firm.normal_price || null}, ${firm.base_price || 0}, ${firm.home_country || 'ghana'}, ${firm.addon_countries || null})
     RETURNING *
   `;
   return rows[0];
@@ -41,6 +41,7 @@ export async function updateFirm(id, firm) {
       num_users = ${firm.num_users},
       subscription_start = ${firm.subscription_start || null},
       subscription_end = ${firm.subscription_end || null},
+      normal_price = ${firm.normal_price || null},
       base_price = ${firm.base_price},
       home_country = ${firm.home_country || 'ghana'},
       addon_countries = ${firm.addon_countries || null},

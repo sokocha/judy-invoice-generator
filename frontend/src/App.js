@@ -2783,6 +2783,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
     num_users: 1,
     subscription_start: '',
     subscription_end: '',
+    normal_price: 0,
     base_price: 0,
     home_country: 'ghana',
     addon_countries: ''
@@ -2826,6 +2827,9 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
     }
     if (!formData.city.trim()) {
       newErrors.city = 'City is required';
+    }
+    if (formData.normal_price < 0) {
+      newErrors.normal_price = 'Price cannot be negative';
     }
     if (formData.base_price < 0) {
       newErrors.base_price = 'Price cannot be negative';
@@ -2887,6 +2891,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
         num_users: firm.num_users || 1,
         subscription_start: firm.subscription_start ? firm.subscription_start.split('T')[0] : '',
         subscription_end: firm.subscription_end ? firm.subscription_end.split('T')[0] : '',
+        normal_price: firm.normal_price || 0,
         base_price: firm.base_price || 0,
         home_country: firm.home_country || 'ghana',
         addon_countries: firm.addon_countries || ''
@@ -2906,6 +2911,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
         num_users: 1,
         subscription_start: '',
         subscription_end: '',
+        normal_price: 0,
         base_price: 0,
         home_country: 'ghana',
         addon_countries: ''
@@ -3331,8 +3337,22 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 onChange={e => setFormData({ ...formData, num_users: parseInt(e.target.value) || 1 })}
               />
             </div>
+            <div className={`form-group ${errors.normal_price ? 'has-error' : ''}`}>
+              <label>Normal Price per User per Month ({formData.home_country === 'nigeria' ? 'NGN' : 'GHS'})</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.normal_price}
+                onChange={e => setFormData({ ...formData, normal_price: parseFloat(e.target.value) || 0 })}
+              />
+              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                Undiscounted list price, used as the reference when showing the discount on invoices
+              </small>
+              {errors.normal_price && <div className="form-error">{errors.normal_price}</div>}
+            </div>
             <div className={`form-group ${errors.base_price ? 'has-error' : ''}`}>
-              <label>Base Price per User per Month ({formData.home_country === 'nigeria' ? 'NGN' : 'GHS'})</label>
+              <label>Special Price per User per Month ({formData.home_country === 'nigeria' ? 'NGN' : 'GHS'})</label>
               <input
                 type="number"
                 min="0"
@@ -3340,6 +3360,9 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 value={formData.base_price}
                 onChange={e => setFormData({ ...formData, base_price: parseFloat(e.target.value) || 0 })}
               />
+              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                The price this firm is actually charged
+              </small>
               {errors.base_price && <div className="form-error">{errors.base_price}</div>}
             </div>
             <div className="form-group">
