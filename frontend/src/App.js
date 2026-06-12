@@ -2338,6 +2338,16 @@ const parseAddons = (raw) => {
   return String(raw).split(',').map(s => s.trim()).filter(Boolean);
 };
 
+const CITIES_BY_COUNTRY = {
+  ghana: ['Accra', 'Kumasi', 'Tamale', 'Sekondi-Takoradi', 'Tema', 'Cape Coast', 'Sunyani', 'Koforidua', 'Ho', 'Techiman'],
+  nigeria: ['Lagos', 'Abuja', 'Kano', 'Ibadan', 'Port Harcourt', 'Benin City', 'Kaduna', 'Enugu', 'Abeokuta', 'Onitsha', 'Owerri', 'Warri', 'Ilorin', 'Jos', 'Calabar', 'Uyo']
+};
+
+const COUNTRY_LABELS = { ghana: 'Ghana', nigeria: 'Nigeria' };
+
+const countryForCity = (city) =>
+  Object.keys(CITIES_BY_COUNTRY).find(c => CITIES_BY_COUNTRY[c].includes(city)) || null;
+
 function AddonCountriesPicker({ homeCountry, value, onChange }) {
   const options = ADDON_OPTIONS_BY_HOME_COUNTRY[homeCountry] || [];
   const selected = parseAddons(value);
@@ -2793,6 +2803,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   const [planFilter, setPlanFilter] = useState('all');
   const [errors, setErrors] = useState({});
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' });
+  const [customCity, setCustomCity] = useState(false);
   const { addToast } = useToast();
   const confirm = useConfirm();
   const firmRowRefs = useRef({});
@@ -2876,6 +2887,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
 
   const handleOpenModal = (firm = null) => {
     setErrors({});
+    setCustomCity(!!(firm && firm.city) && !countryForCity(firm.city));
     if (firm) {
       setEditingFirm(firm);
       setFormData({
@@ -3269,15 +3281,53 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
             </div>
             <div className={`form-group ${errors.city ? 'has-error' : formData.city ? 'has-success' : ''}`}>
               <label>City *</label>
-              <input
-                type="text"
-                value={formData.city}
+              <select
+                value={customCity ? '__other__' : formData.city}
                 onChange={e => {
-                  setFormData({ ...formData, city: e.target.value });
-                  validateField('city', e.target.value);
+                  const v = e.target.value;
+                  if (v === '__other__') {
+                    setCustomCity(true);
+                    setFormData({ ...formData, city: '' });
+                    validateField('city', '');
+                    return;
+                  }
+                  setCustomCity(false);
+                  const cityCountry = countryForCity(v);
+                  setFormData({
+                    ...formData,
+                    city: v,
+                    home_country: cityCountry || formData.home_country,
+                    addon_countries: cityCountry && cityCountry !== formData.home_country ? '' : formData.addon_countries
+                  });
+                  validateField('city', v);
                 }}
-                placeholder="e.g., Accra, Ghana"
-              />
+              >
+                <option value="">Select a city...</option>
+                {[formData.home_country, formData.home_country === 'ghana' ? 'nigeria' : 'ghana'].map(country => (
+                  <optgroup key={country} label={COUNTRY_LABELS[country]}>
+                    {CITIES_BY_COUNTRY[country].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                ))}
+                <option value="__other__">Other (not listed)...</option>
+              </select>
+              {customCity && (
+                <input
+                  type="text"
+                  value={formData.city}
+                  onChange={e => {
+                    setFormData({ ...formData, city: e.target.value });
+                    validateField('city', e.target.value);
+                  }}
+                  placeholder="Enter city name"
+                  style={{ marginTop: '0.5rem' }}
+                  autoFocus
+                />
+              )}
+              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                Picking a city sets the home country automatically
+              </small>
               {errors.city && <div className="form-error">{errors.city}</div>}
             </div>
             <div className="form-group">
@@ -3296,9 +3346,11 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 value={formData.home_country}
                 onChange={e => {
                   const hc = e.target.value;
+                  const cityCountry = countryForCity(formData.city);
                   setFormData({
                     ...formData,
                     home_country: hc,
+                    city: cityCountry && cityCountry !== hc ? '' : formData.city,
                     addon_countries: hc === formData.home_country ? formData.addon_countries : ''
                   });
                 }}
@@ -3418,10 +3470,29 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [sendEmailSubject, setSendEmailSubject] = useState('');
   const [sendEmailBody, setSendEmailBody] = useState('');
+  const [referencePrices, setReferencePrices] = useState([]);
   const { addToast } = useToast();
 
   // Get selected firm's email
   const selectedFirm = formData.firmId ? firms.find(f => f.id === parseInt(formData.firmId)) : null;
+
+  useEffect(() => {
+    api.getReferencePrices()
+      .then(rows => setReferencePrices(Array.isArray(rows) ? rows : []))
+      .catch(() => {});
+  }, []);
+
+  // Mirror the server's discount reference: the firm's saved normal price
+  // wins, falling back to the per (country, plan_type) reference price.
+  const normalPrice = (() => {
+    if (selectedFirm && Number(selectedFirm.normal_price) > 0) return Number(selectedFirm.normal_price);
+    const ref = referencePrices.find(r => r.country === formData.homeCountry && r.plan_type === formData.planType);
+    return ref ? Number(ref.price_per_user_per_month) : null;
+  })();
+  const priceCurrency = formData.homeCountry === 'nigeria' ? 'NGN' : 'GHS';
+  const discountPct = normalPrice > 0 && formData.baseAmount > 0 && formData.baseAmount < normalPrice
+    ? Math.round(((normalPrice - formData.baseAmount) / normalPrice) * 10000) / 100
+    : null;
 
   const validateEmail = (email) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -3477,6 +3548,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
         setFormData(prev => ({
           ...prev,
           planType: firm.plan_type || 'standard',
+          duration: firm.plan_duration || '12 months',
           numUsers: firm.num_users || 1,
           baseAmount: firm.base_price || 0,
           homeCountry: firm.home_country || 'ghana',
@@ -3644,7 +3716,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           />
         </div>
         <div className="form-group">
-          <label>Base Price per User per Month ({formData.homeCountry === 'nigeria' ? 'NGN' : 'GHS'})</label>
+          <label>Special Price per User per Month ({priceCurrency})</label>
           <input
             type="number"
             min="0"
@@ -3652,6 +3724,15 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             value={formData.baseAmount}
             onChange={e => setFormData({ ...formData, baseAmount: parseFloat(e.target.value) || 0 })}
           />
+          {normalPrice > 0 && formData.baseAmount > 0 && (
+            <small style={{ color: discountPct != null ? '#059669' : '#64748b', marginTop: '0.25rem', display: 'block' }}>
+              {discountPct != null
+                ? `${discountPct}% off the normal price (${priceCurrency} ${normalPrice.toFixed(2)})`
+                : Number(formData.baseAmount) === normalPrice
+                  ? `Matches the normal price (${priceCurrency} ${normalPrice.toFixed(2)})`
+                  : `Above the normal price (${priceCurrency} ${normalPrice.toFixed(2)})`}
+            </small>
+          )}
         </div>
         <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '1.5rem' }}>
@@ -4071,6 +4152,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
         setFormData(prev => ({
           ...prev,
           plan_type: firm.plan_type || 'standard',
+          duration: firm.plan_duration || '12 months',
           num_users: firm.num_users || 1,
           base_amount: firm.base_price || 0,
           schedule_date: prev.schedule_date || (firm.subscription_end ? firm.subscription_end.split('T')[0] : '')
@@ -4523,7 +4605,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               />
             </div>
             <div className="form-group">
-              <label>Base Price per User per Month (GHS)</label>
+              <label>Special Price per User per Month (GHS)</label>
               <input
                 type="number"
                 min="0"
@@ -5048,7 +5130,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               </div>
 
               <div className="form-group">
-                <label className="form-label">Base Price per User per Month (GHS)</label>
+                <label className="form-label">Special Price per User per Month (GHS)</label>
                 <input
                   type="number"
                   className="form-input"
@@ -6008,7 +6090,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
               </div>
 
               <div className="form-group">
-                <label className="form-label">Base Price per User per Month (GHS)</label>
+                <label className="form-label">Special Price per User per Month (GHS)</label>
                 <input
                   type="number"
                   className="form-input"
