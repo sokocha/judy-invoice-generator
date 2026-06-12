@@ -120,6 +120,67 @@ export async function getReferencePrice(country, planType) {
   return rows[0] || null;
 }
 
+// Pricing (admin-managed source of truth)
+export async function getPlanPrices() {
+  return await sql`
+    SELECT country, plan_type, duration_months, currency, price_per_user
+    FROM plan_prices
+    ORDER BY country, plan_type, duration_months
+  `;
+}
+
+export async function getAddonPrices() {
+  return await sql`
+    SELECT country, currency, price_per_user_per_month
+    FROM addon_prices
+    ORDER BY country
+  `;
+}
+
+export async function savePricing({ plan_prices = [], addon_prices = [] }) {
+  for (const p of plan_prices) {
+    const currency = p.country === 'nigeria' ? 'NGN' : 'GHS';
+    const price = p.price_per_user;
+    if (price == null || price === '' || isNaN(Number(price))) {
+      await sql`
+        DELETE FROM plan_prices
+        WHERE country = ${p.country} AND plan_type = ${p.plan_type} AND duration_months = ${p.duration_months}
+      `;
+      continue;
+    }
+    await sql`
+      INSERT INTO plan_prices (country, plan_type, duration_months, currency, price_per_user)
+      VALUES (${p.country}, ${p.plan_type}, ${p.duration_months}, ${currency}, ${price})
+      ON CONFLICT (country, plan_type, duration_months)
+      DO UPDATE SET currency = EXCLUDED.currency, price_per_user = EXCLUDED.price_per_user, updated_at = CURRENT_TIMESTAMP
+    `;
+    // Keep the legacy reference_prices fallback aligned with the
+    // monthly rate so invoice discount lines share the same source.
+    if (Number(p.duration_months) === 1) {
+      await sql`
+        INSERT INTO reference_prices (country, plan_type, currency, price_per_user_per_month)
+        VALUES (${p.country}, ${p.plan_type}, ${currency}, ${price})
+        ON CONFLICT (country, plan_type)
+        DO UPDATE SET currency = EXCLUDED.currency, price_per_user_per_month = EXCLUDED.price_per_user_per_month, updated_at = CURRENT_TIMESTAMP
+      `;
+    }
+  }
+  for (const a of addon_prices) {
+    const currency = a.country === 'nigeria' ? 'NGN' : 'GHS';
+    const price = a.price_per_user_per_month;
+    if (price == null || price === '' || isNaN(Number(price))) {
+      await sql`DELETE FROM addon_prices WHERE country = ${a.country}`;
+      continue;
+    }
+    await sql`
+      INSERT INTO addon_prices (country, currency, price_per_user_per_month)
+      VALUES (${a.country}, ${currency}, ${price})
+      ON CONFLICT (country)
+      DO UPDATE SET currency = EXCLUDED.currency, price_per_user_per_month = EXCLUDED.price_per_user_per_month, updated_at = CURRENT_TIMESTAMP
+    `;
+  }
+}
+
 export async function updateInvoiceStatus(id, status, sentAt = null) {
   if (sentAt) {
     await sql`UPDATE invoices SET status = ${status}, sent_at = ${sentAt} WHERE id = ${id}`;

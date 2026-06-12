@@ -286,10 +286,9 @@ export default async function handler(req, res) {
     migrations.push('reference_prices_seed_ghana');
 
     // Backfill normal_price for Plus firms from list pricing: GHS 400 /
-    // NGN 35,000 per user per month, plus GHS 20 / NGN 1,500 per
-    // country-database addon (Nigeria, Ghana, Kenya). USA/UK addons have
-    // no published price and add nothing. Only fills firms without a
-    // normal price so manually set values are never overwritten.
+    // NGN 35,000 per user per month, plus GHS 20 / NGN 1,500 per addon
+    // (Nigeria, Ghana, Kenya databases, USA, UK). Only fills firms
+    // without a normal price so manually set values are never overwritten.
     await sql`
       UPDATE law_firms
       SET normal_price =
@@ -298,10 +297,71 @@ export default async function handler(req, res) {
             (CASE WHEN addon_countries LIKE '%The Federal Republic of Nigeria%' THEN 1 ELSE 0 END)
           + (CASE WHEN addon_countries LIKE '%The Republic of Ghana%' THEN 1 ELSE 0 END)
           + (CASE WHEN addon_countries LIKE '%The Republic of Kenya%' THEN 1 ELSE 0 END)
+          + (CASE WHEN addon_countries LIKE '%USA (Select cases and legislation)%' THEN 1 ELSE 0 END)
+          + (CASE WHEN addon_countries LIKE '%UK (Select cases and legislation)%' THEN 1 ELSE 0 END)
         )
       WHERE plan_type = 'plus' AND normal_price IS NULL
     `;
     migrations.push('plus_normal_price_backfill');
+
+    // plan_prices: admin-managed source of truth for list pricing.
+    // price_per_user is the total per-user price for the billing cycle
+    // (e.g. ghana standard 12 months = 780), not a monthly rate.
+    await sql`
+      CREATE TABLE IF NOT EXISTS plan_prices (
+        country VARCHAR(20) NOT NULL,
+        plan_type VARCHAR(20) NOT NULL,
+        duration_months INTEGER NOT NULL,
+        currency VARCHAR(8) NOT NULL,
+        price_per_user NUMERIC(12,2) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (country, plan_type, duration_months)
+      )
+    `;
+    migrations.push('plan_prices');
+
+    // Seed plan prices from the published pricing pages (idempotent).
+    // Student prices and the missing Plus 6-month cycles are not
+    // published; the admin sets them from the Pricing settings page.
+    await sql`
+      INSERT INTO plan_prices (country, plan_type, duration_months, currency, price_per_user)
+      VALUES
+        ('ghana', 'standard', 1, 'GHS', 80),
+        ('ghana', 'standard', 3, 'GHS', 215),
+        ('ghana', 'standard', 6, 'GHS', 400),
+        ('ghana', 'standard', 12, 'GHS', 780),
+        ('ghana', 'plus', 1, 'GHS', 400),
+        ('ghana', 'plus', 3, 'GHS', 1100),
+        ('ghana', 'plus', 12, 'GHS', 3900),
+        ('nigeria', 'standard', 1, 'NGN', 7000),
+        ('nigeria', 'standard', 3, 'NGN', 19000),
+        ('nigeria', 'standard', 6, 'NGN', 35000),
+        ('nigeria', 'standard', 12, 'NGN', 68000),
+        ('nigeria', 'plus', 1, 'NGN', 35000),
+        ('nigeria', 'plus', 3, 'NGN', 95000),
+        ('nigeria', 'plus', 12, 'NGN', 340000)
+      ON CONFLICT (country, plan_type, duration_months) DO NOTHING
+    `;
+    migrations.push('plan_prices_seed');
+
+    // addon_prices: per-country price per user per month for each addon
+    // (Nigeria, Ghana, Kenya databases, USA, UK)
+    await sql`
+      CREATE TABLE IF NOT EXISTS addon_prices (
+        country VARCHAR(20) PRIMARY KEY,
+        currency VARCHAR(8) NOT NULL,
+        price_per_user_per_month NUMERIC(12,2) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    migrations.push('addon_prices');
+
+    await sql`
+      INSERT INTO addon_prices (country, currency, price_per_user_per_month)
+      VALUES ('ghana', 'GHS', 20), ('nigeria', 'NGN', 1500)
+      ON CONFLICT (country) DO NOTHING
+    `;
+    migrations.push('addon_prices_seed');
 
     return res.status(200).json({
       success: true,

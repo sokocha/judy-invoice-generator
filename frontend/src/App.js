@@ -2348,6 +2348,100 @@ const COUNTRY_LABELS = { ghana: 'Ghana', nigeria: 'Nigeria' };
 const countryForCity = (city) =>
   Object.keys(CITIES_BY_COUNTRY).find(c => CITIES_BY_COUNTRY[c].includes(city)) || null;
 
+// Fallback list pricing, used until the admin pricing loads. The
+// admin-managed plan_prices/addon_prices tables are the source of truth.
+const PLAN_LIST_PRICES = {
+  ghana: { standard: 80, plus: 400 },
+  nigeria: { standard: 7000, plus: 35000 }
+};
+const ADDON_LIST_PRICES = { ghana: 20, nigeria: 1500 };
+const PRICED_ADDONS = [
+  'The Federal Republic of Nigeria',
+  'The Republic of Ghana',
+  'The Republic of Kenya',
+  'USA (Select cases and legislation)',
+  'UK (Select cases and legislation)'
+];
+
+const computeNormalPrice = (homeCountry, planType, addonCountries) => {
+  const base = (PLAN_LIST_PRICES[homeCountry] || {})[planType] || 0;
+  const addonCount = parseAddons(addonCountries).filter(a => PRICED_ADDONS.includes(a)).length;
+  return base + addonCount * (ADDON_LIST_PRICES[homeCountry] || 0);
+};
+
+// Cheapest list price for a custom period, combining published cycles
+// largest-first (e.g. 7 months = 6 months + 1 month). Returns null when
+// the period can't be covered (e.g. no monthly price published).
+const decomposeCyclePrice = (plans, months) => {
+  const cycles = plans
+    .map(p => ({ months: Number(p.duration_months), price: Number(p.price_per_user) }))
+    .sort((a, b) => b.months - a.months);
+  let remaining = months;
+  let total = 0;
+  const parts = [];
+  for (const c of cycles) {
+    while (remaining >= c.months) {
+      remaining -= c.months;
+      total += c.price;
+      parts.push(c.months);
+    }
+  }
+  if (remaining > 0 || parts.length === 0) return null;
+  return { total, parts };
+};
+
+const fmtPrice = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+// Normal price per user per month from admin pricing: the exact billing
+// cycle's per-month rate when set (e.g. ghana standard 12 months =
+// 780/12 = 65), the cheapest cycle combination for custom periods,
+// plus priced addons.
+const normalPriceFromPricing = (pricing, homeCountry, planType, planDuration, addonCountries) => {
+  const addonCount = parseAddons(addonCountries).filter(a => PRICED_ADDONS.includes(a)).length;
+  const months = parseInt(planDuration, 10) || 1;
+  const plans = pricing && Array.isArray(pricing.plan_prices)
+    ? pricing.plan_prices.filter(p => p.country === homeCountry && p.plan_type === planType)
+    : [];
+  const exact = plans.find(p => Number(p.duration_months) === months);
+  let base = null;
+  if (exact) {
+    base = Number(exact.price_per_user) / months;
+  } else {
+    const combo = decomposeCyclePrice(plans, months);
+    if (combo) base = combo.total / months;
+  }
+  if (base == null) return computeNormalPrice(homeCountry, planType, addonCountries);
+  const addonRow = pricing && Array.isArray(pricing.addon_prices)
+    ? pricing.addon_prices.find(a => a.country === homeCountry)
+    : null;
+  const addonRate = addonRow ? Number(addonRow.price_per_user_per_month) : (ADDON_LIST_PRICES[homeCountry] || 0);
+  return Math.round((base + addonCount * addonRate) * 100) / 100;
+};
+
+// Human-readable explanation of how the normal price was derived.
+const describeNormalPrice = (pricing, homeCountry, planType, planDuration) => {
+  const months = parseInt(planDuration, 10) || 1;
+  const currency = homeCountry === 'nigeria' ? 'NGN' : 'GHS';
+  const plans = pricing && Array.isArray(pricing.plan_prices)
+    ? pricing.plan_prices.filter(p => p.country === homeCountry && p.plan_type === planType)
+    : [];
+  const exact = plans.find(p => Number(p.duration_months) === months);
+  if (exact) {
+    const total = Number(exact.price_per_user);
+    if (months === 1) return `Monthly list price: ${currency} ${fmtPrice(total)}/user`;
+    return `${months}-month list price: ${currency} ${fmtPrice(total)}/user (= ${currency} ${fmtPrice(Math.round((total / months) * 100) / 100)}/user/month)`;
+  }
+  const combo = decomposeCyclePrice(plans, months);
+  if (!combo) return null;
+  const counts = {};
+  combo.parts.forEach(m => { counts[m] = (counts[m] || 0) + 1; });
+  const partsLabel = Object.keys(counts).map(Number).sort((a, b) => b - a)
+    .map(m => `${counts[m] > 1 ? `${counts[m]} × ` : ''}${m === 1 ? '1 month' : `${m} months`}`)
+    .join(' + ');
+  const perMonth = Math.round((combo.total / months) * 100) / 100;
+  return `Custom ${months}-month period — list price ${currency} ${fmtPrice(combo.total)}/user, priced as ${partsLabel} (≈ ${currency} ${fmtPrice(perMonth)}/user/month)`;
+};
+
 function AddonCountriesPicker({ homeCountry, value, onChange }) {
   const options = ADDON_OPTIONS_BY_HOME_COUNTRY[homeCountry] || [];
   const selected = parseAddons(value);
@@ -2484,6 +2578,12 @@ const api = {
 
   // Reference prices (per-country per-plan unit costs)
   getReferencePrices: () => authFetch(`${API_BASE}/api/reference-prices`).then(r => r.json()),
+  getPricing: () => authFetch(`${API_BASE}/api/reference-prices?action=pricing`).then(r => r.json()),
+  savePricing: (data) => authFetch(`${API_BASE}/api/reference-prices`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json()),
 
   // Scheduled
   getScheduled: () => authFetch(`${API_BASE}/api/scheduled`).then(r => r.json()),
@@ -2804,7 +2904,16 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   const [errors, setErrors] = useState({});
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' });
   const [customCity, setCustomCity] = useState(false);
+  const [customDuration, setCustomDuration] = useState(false);
+  const [pricing, setPricing] = useState(null);
   const { addToast } = useToast();
+
+  useEffect(() => {
+    api.getPricing().then(setPricing).catch(() => {});
+  }, []);
+
+  const listNormalPrice = (homeCountry, planType, planDuration, addonCountries) =>
+    normalPriceFromPricing(pricing, homeCountry, planType, planDuration, addonCountries);
   const confirm = useConfirm();
   const firmRowRefs = useRef({});
 
@@ -2888,6 +2997,8 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   const handleOpenModal = (firm = null) => {
     setErrors({});
     setCustomCity(!!(firm && firm.city) && !countryForCity(firm.city));
+    const firmMonths = firm ? (parseInt(firm.plan_duration, 10) || 12) : 12;
+    setCustomDuration(!PRICING_DURATIONS.includes(firmMonths));
     if (firm) {
       setEditingFirm(firm);
       setFormData({
@@ -2923,7 +3034,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
         num_users: 1,
         subscription_start: '',
         subscription_end: '',
-        normal_price: 0,
+        normal_price: listNormalPrice('ghana', 'standard', '12 months', ''),
         base_price: 0,
         home_country: 'ghana',
         addon_countries: ''
@@ -3293,11 +3404,14 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                   }
                   setCustomCity(false);
                   const cityCountry = countryForCity(v);
+                  const nextCountry = cityCountry || formData.home_country;
+                  const nextAddons = cityCountry && cityCountry !== formData.home_country ? '' : formData.addon_countries;
                   setFormData({
                     ...formData,
                     city: v,
-                    home_country: cityCountry || formData.home_country,
-                    addon_countries: cityCountry && cityCountry !== formData.home_country ? '' : formData.addon_countries
+                    home_country: nextCountry,
+                    addon_countries: nextAddons,
+                    normal_price: listNormalPrice(nextCountry, formData.plan_type, formData.plan_duration, nextAddons)
                   });
                   validateField('city', v);
                 }}
@@ -3334,8 +3448,16 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               <label>Plan Type</label>
               <select
                 value={formData.plan_type}
-                onChange={e => setFormData({ ...formData, plan_type: e.target.value })}
+                onChange={e => {
+                  const pt = e.target.value;
+                  setFormData({
+                    ...formData,
+                    plan_type: pt,
+                    normal_price: listNormalPrice(formData.home_country, pt, formData.plan_duration, formData.addon_countries)
+                  });
+                }}
               >
+                <option value="student">Student</option>
                 <option value="standard">Standard</option>
                 <option value="plus">Plus</option>
               </select>
@@ -3347,11 +3469,13 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 onChange={e => {
                   const hc = e.target.value;
                   const cityCountry = countryForCity(formData.city);
+                  const nextAddons = hc === formData.home_country ? formData.addon_countries : '';
                   setFormData({
                     ...formData,
                     home_country: hc,
                     city: cityCountry && cityCountry !== hc ? '' : formData.city,
-                    addon_countries: hc === formData.home_country ? formData.addon_countries : ''
+                    addon_countries: nextAddons,
+                    normal_price: listNormalPrice(hc, formData.plan_type, formData.plan_duration, nextAddons)
                   });
                 }}
               >
@@ -3364,21 +3488,59 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               <AddonCountriesPicker
                 homeCountry={formData.home_country}
                 value={formData.addon_countries}
-                onChange={(v) => setFormData({ ...formData, addon_countries: v })}
+                onChange={(v) => setFormData({
+                  ...formData,
+                  addon_countries: v,
+                  normal_price: listNormalPrice(formData.home_country, formData.plan_type, formData.plan_duration, v)
+                })}
               />
             </div>
             <div className="form-group">
-              <label>Plan Duration (Months)</label>
-              <input
-                type="number"
-                min="1"
-                max="60"
-                value={parseInt(formData.plan_duration) || 12}
+              <label>Billing Cycle</label>
+              <select
+                value={customDuration ? '__custom__' : String(parseInt(formData.plan_duration) || 12)}
                 onChange={e => {
-                  const val = parseInt(e.target.value) || 1;
-                  setFormData({ ...formData, plan_duration: val === 1 ? '1 month' : `${val} months` });
+                  const v = e.target.value;
+                  if (v === '__custom__') {
+                    setCustomDuration(true);
+                    return;
+                  }
+                  setCustomDuration(false);
+                  const val = parseInt(v, 10);
+                  const nextDuration = val === 1 ? '1 month' : `${val} months`;
+                  setFormData({
+                    ...formData,
+                    plan_duration: nextDuration,
+                    normal_price: listNormalPrice(formData.home_country, formData.plan_type, nextDuration, formData.addon_countries)
+                  });
                 }}
-              />
+              >
+                <option value="1">Monthly</option>
+                <option value="3">3 Months</option>
+                <option value="6">6 Months</option>
+                <option value="12">12 Months (Annual)</option>
+                <option value="__custom__">Custom...</option>
+              </select>
+              {customDuration && (
+                <input
+                  type="number"
+                  min="1"
+                  max="60"
+                  value={parseInt(formData.plan_duration) || 12}
+                  onChange={e => {
+                    const val = parseInt(e.target.value) || 1;
+                    const nextDuration = val === 1 ? '1 month' : `${val} months`;
+                    setFormData({
+                      ...formData,
+                      plan_duration: nextDuration,
+                      normal_price: listNormalPrice(formData.home_country, formData.plan_type, nextDuration, formData.addon_countries)
+                    });
+                  }}
+                  placeholder="Number of months"
+                  style={{ marginTop: '0.5rem' }}
+                  autoFocus
+                />
+              )}
             </div>
             <div className="form-group">
               <label>Number of Users</label>
@@ -3399,7 +3561,8 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 onChange={e => setFormData({ ...formData, normal_price: parseFloat(e.target.value) || 0 })}
               />
               <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                Undiscounted list price, used as the reference when showing the discount on invoices
+                {describeNormalPrice(pricing, formData.home_country, formData.plan_type, formData.plan_duration)
+                  || 'Auto-filled from list pricing (plan + addons); edit to override'}
               </small>
               {errors.normal_price && <div className="form-error">{errors.normal_price}</div>}
             </div>
@@ -3664,6 +3827,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             value={formData.planType}
             onChange={e => setFormData({ ...formData, planType: e.target.value })}
           >
+            <option value="student">Student Plan</option>
             <option value="standard">Standard Plan</option>
             <option value="plus">Plus Plan</option>
           </select>
@@ -4578,6 +4742,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
                 value={formData.plan_type}
                 onChange={e => setFormData({ ...formData, plan_type: e.target.value })}
               >
+                <option value="student">Student Plan</option>
                 <option value="standard">Standard Plan</option>
                 <option value="plus">Plus Plan</option>
               </select>
@@ -6416,6 +6581,153 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
 }
 
 // Settings Section
+const PRICING_PLANS = ['student', 'standard', 'plus'];
+const PRICING_PLAN_LABELS = { student: 'Student', standard: 'Standard', plus: 'Plus' };
+const PRICING_DURATIONS = [1, 3, 6, 12];
+const PRICING_DURATION_LABELS = { 1: 'Monthly', 3: '3 Months', 6: '6 Months', 12: '12 Months' };
+
+const emptyPricingGrid = () => {
+  const plans = {};
+  PRICING_PLANS.forEach(p => { plans[p] = { 1: '', 3: '', 6: '', 12: '' }; });
+  return { plans, addon: '' };
+};
+
+function PricingSection() {
+  const [grid, setGrid] = useState({ ghana: emptyPricingGrid(), nigeria: emptyPricingGrid() });
+  const [loading, setLoading] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    api.getPricing().then(data => {
+      const next = { ghana: emptyPricingGrid(), nigeria: emptyPricingGrid() };
+      (data.plan_prices || []).forEach(p => {
+        const country = next[p.country];
+        if (country && country.plans[p.plan_type] && country.plans[p.plan_type][p.duration_months] !== undefined) {
+          country.plans[p.plan_type][p.duration_months] = String(Number(p.price_per_user));
+        }
+      });
+      (data.addon_prices || []).forEach(a => {
+        if (next[a.country]) next[a.country].addon = String(Number(a.price_per_user_per_month));
+      });
+      setGrid(next);
+    }).catch(() => {});
+  }, []);
+
+  const setPlanPrice = (country, plan, months, value) => {
+    setGrid(prev => ({
+      ...prev,
+      [country]: {
+        ...prev[country],
+        plans: {
+          ...prev[country].plans,
+          [plan]: { ...prev[country].plans[plan], [months]: value }
+        }
+      }
+    }));
+  };
+
+  const setAddonPrice = (country, value) => {
+    setGrid(prev => ({ ...prev, [country]: { ...prev[country], addon: value } }));
+  };
+
+  const handleSave = async () => {
+    const plan_prices = [];
+    const addon_prices = [];
+    ['ghana', 'nigeria'].forEach(country => {
+      PRICING_PLANS.forEach(plan => {
+        PRICING_DURATIONS.forEach(months => {
+          const v = grid[country].plans[plan][months];
+          plan_prices.push({
+            country,
+            plan_type: plan,
+            duration_months: months,
+            price_per_user: v === '' ? null : parseFloat(v)
+          });
+        });
+      });
+      const av = grid[country].addon;
+      addon_prices.push({ country, price_per_user_per_month: av === '' ? null : parseFloat(av) });
+    });
+    setLoading(true);
+    try {
+      await api.savePricing({ plan_prices, addon_prices });
+      addToast('Pricing saved!', 'success');
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <h2 className="card-title">Plan & Addon Pricing</h2>
+      </div>
+      <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.875rem' }}>
+        Source of truth for list pricing. Prices are per user for the whole billing cycle
+        (e.g. Ghana Standard 12 months = 780, so 65/user/month). Leave a cell blank if that
+        cycle isn't offered. These prices drive the Normal Price auto-fill on firm profiles
+        and the discount shown on invoices.
+      </p>
+      {['ghana', 'nigeria'].map(country => {
+        const currency = country === 'nigeria' ? 'NGN' : 'GHS';
+        return (
+          <div key={country} style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>
+              {COUNTRY_LABELS[country]} ({currency})
+            </h3>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Plan</th>
+                    {PRICING_DURATIONS.map(m => <th key={m}>{PRICING_DURATION_LABELS[m]}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {PRICING_PLANS.map(plan => (
+                    <tr key={plan}>
+                      <td><strong>{PRICING_PLAN_LABELS[plan]}</strong></td>
+                      {PRICING_DURATIONS.map(months => (
+                        <td key={months}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={grid[country].plans[plan][months]}
+                            onChange={e => setPlanPrice(country, plan, months, e.target.value)}
+                            style={{ maxWidth: '120px' }}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="form-group" style={{ maxWidth: '300px', marginTop: '0.75rem' }}>
+              <label>Addon Price per User per Month ({currency})</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={grid[country].addon}
+                onChange={e => setAddonPrice(country, e.target.value)}
+              />
+              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                Applied per addon: Nigeria, Ghana, and Kenya databases, USA and UK
+              </small>
+            </div>
+          </div>
+        );
+      })}
+      <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
+        {loading ? 'Saving...' : 'Save Pricing'}
+      </button>
+    </div>
+  );
+}
+
 function SettingsSection() {
   const [config, setConfig] = useState({
     smtp_host: '',
@@ -6495,7 +6807,8 @@ function SettingsSection() {
 
   return (
     <>
-      
+      <PricingSection />
+
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Email Configuration</h2>
