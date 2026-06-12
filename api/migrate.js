@@ -169,6 +169,21 @@ export default async function handler(req, res) {
     `;
     migrations.push('addon_countries');
 
+    // law_firms.normal_price: undiscounted per-user-per-month list price;
+    // base_price remains the special price the firm is actually charged
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'law_firms' AND column_name = 'normal_price'
+        ) THEN
+          ALTER TABLE law_firms ADD COLUMN normal_price NUMERIC(12,2);
+        END IF;
+      END $$
+    `;
+    migrations.push('normal_price');
+
     // invoices.home_country
     await sql`
       DO $$

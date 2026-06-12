@@ -109,12 +109,18 @@ const loadTemplateBuffer = async (filename) => {
 };
 
 // Build per-user unit cost details. Returns null if not applicable.
-// baseAmount is already the per-user price.
-const buildUnitCost = async (country, planType, baseAmount, numUsers, includeUnitCost) => {
+// baseAmount is already the per-user price. The firm's saved normal_price
+// takes precedence as the reference price; falls back to the per
+// (country, plan_type) reference_prices table when not set.
+const buildUnitCost = async (country, planType, baseAmount, numUsers, includeUnitCost, firmNormalPrice = null) => {
   if (!includeUnitCost || !numUsers || numUsers < 1) return null;
-  const ref = await db.getReferencePrice(country, planType);
-  const refPrice = ref ? Number(ref.price_per_user_per_month) : null;
-  const currency = ref ? ref.currency : (country === 'nigeria' ? 'NGN' : 'GHS');
+  let refPrice = Number(firmNormalPrice) > 0 ? round2(Number(firmNormalPrice)) : null;
+  let currency = country === 'nigeria' ? 'NGN' : 'GHS';
+  if (refPrice == null) {
+    const ref = await db.getReferencePrice(country, planType);
+    refPrice = ref ? Number(ref.price_per_user_per_month) : null;
+    if (ref) currency = ref.currency;
+  }
   const unit = round2(Number(baseAmount) || 0);
   let line;
   let discountPct = null;
@@ -172,7 +178,7 @@ export const generateInvoice = async (invoiceData) => {
   const country = (homeCountry || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(addonCountries ?? firm.addon_countries);
   const amounts = calculateAmounts(baseAmount, numUsers, duration, country);
-  const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost);
+  const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost, firm.normal_price);
 
   const template = await loadTemplateBuffer(templateFilenameFor(country, planType));
 
@@ -230,7 +236,7 @@ export const getInvoicePreview = async (invoiceData) => {
   const country = (homeCountry || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(addonCountries ?? firm.addon_countries);
   const amounts = calculateAmounts(baseAmount, numUsers, duration, country);
-  const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost);
+  const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost, firm.normal_price);
   const invoiceNumber = await db.getNextInvoiceNumber();
 
   return {
