@@ -2348,6 +2348,21 @@ const COUNTRY_LABELS = { ghana: 'Ghana', nigeria: 'Nigeria' };
 const countryForCity = (city) =>
   Object.keys(CITIES_BY_COUNTRY).find(c => CITIES_BY_COUNTRY[c].includes(city)) || null;
 
+// Published list pricing per user per month. Country-database addons carry
+// a price; USA/UK addons are unpriced.
+const PLAN_LIST_PRICES = {
+  ghana: { standard: 80, plus: 400 },
+  nigeria: { standard: 7000, plus: 35000 }
+};
+const ADDON_LIST_PRICES = { ghana: 20, nigeria: 1500 };
+const PRICED_ADDONS = ['The Federal Republic of Nigeria', 'The Republic of Ghana', 'The Republic of Kenya'];
+
+const computeNormalPrice = (homeCountry, planType, addonCountries) => {
+  const base = (PLAN_LIST_PRICES[homeCountry] || {})[planType] || 0;
+  const addonCount = parseAddons(addonCountries).filter(a => PRICED_ADDONS.includes(a)).length;
+  return base + addonCount * (ADDON_LIST_PRICES[homeCountry] || 0);
+};
+
 function AddonCountriesPicker({ homeCountry, value, onChange }) {
   const options = ADDON_OPTIONS_BY_HOME_COUNTRY[homeCountry] || [];
   const selected = parseAddons(value);
@@ -2923,7 +2938,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
         num_users: 1,
         subscription_start: '',
         subscription_end: '',
-        normal_price: 0,
+        normal_price: computeNormalPrice('ghana', 'standard', ''),
         base_price: 0,
         home_country: 'ghana',
         addon_countries: ''
@@ -3293,11 +3308,14 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                   }
                   setCustomCity(false);
                   const cityCountry = countryForCity(v);
+                  const nextCountry = cityCountry || formData.home_country;
+                  const nextAddons = cityCountry && cityCountry !== formData.home_country ? '' : formData.addon_countries;
                   setFormData({
                     ...formData,
                     city: v,
-                    home_country: cityCountry || formData.home_country,
-                    addon_countries: cityCountry && cityCountry !== formData.home_country ? '' : formData.addon_countries
+                    home_country: nextCountry,
+                    addon_countries: nextAddons,
+                    normal_price: computeNormalPrice(nextCountry, formData.plan_type, nextAddons)
                   });
                   validateField('city', v);
                 }}
@@ -3334,7 +3352,14 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               <label>Plan Type</label>
               <select
                 value={formData.plan_type}
-                onChange={e => setFormData({ ...formData, plan_type: e.target.value })}
+                onChange={e => {
+                  const pt = e.target.value;
+                  setFormData({
+                    ...formData,
+                    plan_type: pt,
+                    normal_price: computeNormalPrice(formData.home_country, pt, formData.addon_countries)
+                  });
+                }}
               >
                 <option value="standard">Standard</option>
                 <option value="plus">Plus</option>
@@ -3347,11 +3372,13 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 onChange={e => {
                   const hc = e.target.value;
                   const cityCountry = countryForCity(formData.city);
+                  const nextAddons = hc === formData.home_country ? formData.addon_countries : '';
                   setFormData({
                     ...formData,
                     home_country: hc,
                     city: cityCountry && cityCountry !== hc ? '' : formData.city,
-                    addon_countries: hc === formData.home_country ? formData.addon_countries : ''
+                    addon_countries: nextAddons,
+                    normal_price: computeNormalPrice(hc, formData.plan_type, nextAddons)
                   });
                 }}
               >
@@ -3364,7 +3391,11 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               <AddonCountriesPicker
                 homeCountry={formData.home_country}
                 value={formData.addon_countries}
-                onChange={(v) => setFormData({ ...formData, addon_countries: v })}
+                onChange={(v) => setFormData({
+                  ...formData,
+                  addon_countries: v,
+                  normal_price: computeNormalPrice(formData.home_country, formData.plan_type, v)
+                })}
               />
             </div>
             <div className="form-group">
@@ -3399,7 +3430,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 onChange={e => setFormData({ ...formData, normal_price: parseFloat(e.target.value) || 0 })}
               />
               <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                Undiscounted list price, used as the reference when showing the discount on invoices
+                Auto-filled from list pricing (plan + addons); edit to override
               </small>
               {errors.normal_price && <div className="form-error">{errors.normal_price}</div>}
             </div>
