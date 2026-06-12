@@ -303,6 +303,65 @@ export default async function handler(req, res) {
     `;
     migrations.push('plus_normal_price_backfill');
 
+    // plan_prices: admin-managed source of truth for list pricing.
+    // price_per_user is the total per-user price for the billing cycle
+    // (e.g. ghana standard 12 months = 780), not a monthly rate.
+    await sql`
+      CREATE TABLE IF NOT EXISTS plan_prices (
+        country VARCHAR(20) NOT NULL,
+        plan_type VARCHAR(20) NOT NULL,
+        duration_months INTEGER NOT NULL,
+        currency VARCHAR(8) NOT NULL,
+        price_per_user NUMERIC(12,2) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (country, plan_type, duration_months)
+      )
+    `;
+    migrations.push('plan_prices');
+
+    // Seed plan prices from the published pricing pages (idempotent).
+    // Student prices and the missing Plus 6-month cycles are not
+    // published; the admin sets them from the Pricing settings page.
+    await sql`
+      INSERT INTO plan_prices (country, plan_type, duration_months, currency, price_per_user)
+      VALUES
+        ('ghana', 'standard', 1, 'GHS', 80),
+        ('ghana', 'standard', 3, 'GHS', 215),
+        ('ghana', 'standard', 6, 'GHS', 400),
+        ('ghana', 'standard', 12, 'GHS', 780),
+        ('ghana', 'plus', 1, 'GHS', 400),
+        ('ghana', 'plus', 3, 'GHS', 1100),
+        ('ghana', 'plus', 12, 'GHS', 3900),
+        ('nigeria', 'standard', 1, 'NGN', 7000),
+        ('nigeria', 'standard', 3, 'NGN', 19000),
+        ('nigeria', 'standard', 6, 'NGN', 35000),
+        ('nigeria', 'standard', 12, 'NGN', 68000),
+        ('nigeria', 'plus', 1, 'NGN', 35000),
+        ('nigeria', 'plus', 3, 'NGN', 95000),
+        ('nigeria', 'plus', 12, 'NGN', 340000)
+      ON CONFLICT (country, plan_type, duration_months) DO NOTHING
+    `;
+    migrations.push('plan_prices_seed');
+
+    // addon_prices: per-country price per user per month for each
+    // country-database addon (USA/UK addons are unpriced)
+    await sql`
+      CREATE TABLE IF NOT EXISTS addon_prices (
+        country VARCHAR(20) PRIMARY KEY,
+        currency VARCHAR(8) NOT NULL,
+        price_per_user_per_month NUMERIC(12,2) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    migrations.push('addon_prices');
+
+    await sql`
+      INSERT INTO addon_prices (country, currency, price_per_user_per_month)
+      VALUES ('ghana', 'GHS', 20), ('nigeria', 'NGN', 1500)
+      ON CONFLICT (country) DO NOTHING
+    `;
+    migrations.push('addon_prices_seed');
+
     return res.status(200).json({
       success: true,
       message: `Migration completed: ${migrations.join(', ')} columns processed`

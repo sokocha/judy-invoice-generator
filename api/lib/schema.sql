@@ -104,6 +104,26 @@ CREATE TABLE IF NOT EXISTS scheduled_invoices (
   executed_at TIMESTAMP
 );
 
+-- Plan prices: admin-managed list pricing per (country, plan, billing cycle).
+-- price_per_user is the total per-user price for the cycle, not a monthly rate.
+CREATE TABLE IF NOT EXISTS plan_prices (
+  country VARCHAR(20) NOT NULL,
+  plan_type VARCHAR(20) NOT NULL,
+  duration_months INTEGER NOT NULL,
+  currency VARCHAR(8) NOT NULL,
+  price_per_user NUMERIC(12,2) NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (country, plan_type, duration_months)
+);
+
+-- Addon prices: per-country price per user per month per country-database addon
+CREATE TABLE IF NOT EXISTS addon_prices (
+  country VARCHAR(20) PRIMARY KEY,
+  currency VARCHAR(8) NOT NULL,
+  price_per_user_per_month NUMERIC(12,2) NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Email Config table (single row)
 CREATE TABLE IF NOT EXISTS email_config (
   id INTEGER PRIMARY KEY DEFAULT 1,
