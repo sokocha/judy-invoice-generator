@@ -3548,6 +3548,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
         setFormData(prev => ({
           ...prev,
           planType: firm.plan_type || 'standard',
+          duration: firm.plan_duration || '12 months',
           numUsers: firm.num_users || 1,
           baseAmount: firm.base_price || 0,
           homeCountry: firm.home_country || 'ghana',
@@ -4151,6 +4152,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
         setFormData(prev => ({
           ...prev,
           plan_type: firm.plan_type || 'standard',
+          duration: firm.plan_duration || '12 months',
           num_users: firm.num_users || 1,
           base_amount: firm.base_price || 0,
           schedule_date: prev.schedule_date || (firm.subscription_end ? firm.subscription_end.split('T')[0] : '')
