@@ -3470,10 +3470,29 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [sendEmailSubject, setSendEmailSubject] = useState('');
   const [sendEmailBody, setSendEmailBody] = useState('');
+  const [referencePrices, setReferencePrices] = useState([]);
   const { addToast } = useToast();
 
   // Get selected firm's email
   const selectedFirm = formData.firmId ? firms.find(f => f.id === parseInt(formData.firmId)) : null;
+
+  useEffect(() => {
+    api.getReferencePrices()
+      .then(rows => setReferencePrices(Array.isArray(rows) ? rows : []))
+      .catch(() => {});
+  }, []);
+
+  // Mirror the server's discount reference: the firm's saved normal price
+  // wins, falling back to the per (country, plan_type) reference price.
+  const normalPrice = (() => {
+    if (selectedFirm && Number(selectedFirm.normal_price) > 0) return Number(selectedFirm.normal_price);
+    const ref = referencePrices.find(r => r.country === formData.homeCountry && r.plan_type === formData.planType);
+    return ref ? Number(ref.price_per_user_per_month) : null;
+  })();
+  const priceCurrency = formData.homeCountry === 'nigeria' ? 'NGN' : 'GHS';
+  const discountPct = normalPrice > 0 && formData.baseAmount > 0 && formData.baseAmount < normalPrice
+    ? Math.round(((normalPrice - formData.baseAmount) / normalPrice) * 10000) / 100
+    : null;
 
   const validateEmail = (email) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -3696,7 +3715,7 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
           />
         </div>
         <div className="form-group">
-          <label>Base Price per User per Month ({formData.homeCountry === 'nigeria' ? 'NGN' : 'GHS'})</label>
+          <label>Special Price per User per Month ({priceCurrency})</label>
           <input
             type="number"
             min="0"
@@ -3704,6 +3723,15 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
             value={formData.baseAmount}
             onChange={e => setFormData({ ...formData, baseAmount: parseFloat(e.target.value) || 0 })}
           />
+          {normalPrice > 0 && formData.baseAmount > 0 && (
+            <small style={{ color: discountPct != null ? '#059669' : '#64748b', marginTop: '0.25rem', display: 'block' }}>
+              {discountPct != null
+                ? `${discountPct}% off the normal price (${priceCurrency} ${normalPrice.toFixed(2)})`
+                : Number(formData.baseAmount) === normalPrice
+                  ? `Matches the normal price (${priceCurrency} ${normalPrice.toFixed(2)})`
+                  : `Above the normal price (${priceCurrency} ${normalPrice.toFixed(2)})`}
+            </small>
+          )}
         </div>
         <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '1.5rem' }}>
@@ -4575,7 +4603,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
               />
             </div>
             <div className="form-group">
-              <label>Base Price per User per Month (GHS)</label>
+              <label>Special Price per User per Month (GHS)</label>
               <input
                 type="number"
                 min="0"
@@ -5100,7 +5128,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               </div>
 
               <div className="form-group">
-                <label className="form-label">Base Price per User per Month (GHS)</label>
+                <label className="form-label">Special Price per User per Month (GHS)</label>
                 <input
                   type="number"
                   className="form-input"
@@ -6060,7 +6088,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
               </div>
 
               <div className="form-group">
-                <label className="form-label">Base Price per User per Month (GHS)</label>
+                <label className="form-label">Special Price per User per Month (GHS)</label>
                 <input
                   type="number"
                   className="form-input"
