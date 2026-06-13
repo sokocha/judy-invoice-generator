@@ -108,10 +108,38 @@ const loadTemplateBuffer = async (filename) => {
   return Buffer.from(await response.arrayBuffer());
 };
 
+// Addons that carry a price (all current addons do). USA/UK kept explicit
+// in case they ever become unpriced again.
+const PRICED_ADDONS = [
+  'The Federal Republic of Nigeria',
+  'The Republic of Ghana',
+  'The Republic of Kenya',
+  'USA (Select cases and legislation)',
+  'UK (Select cases and legislation)',
+];
+
+// Effective normal (reference) price for an invoice: the firm's saved
+// normal price adjusted for how this invoice's addons differ from the
+// firm's profile addons (each added/removed addon shifts it by the
+// per-country addon rate). Returns null when the firm has no normal price.
+const effectiveNormalPrice = async (firm, country, invoiceAddons) => {
+  if (!(Number(firm.normal_price) > 0)) return null;
+  const profileCount = parseAddons(firm.addon_countries).filter(a => PRICED_ADDONS.includes(a)).length;
+  const invoiceCount = (invoiceAddons || []).filter(a => PRICED_ADDONS.includes(a)).length;
+  if (invoiceCount === profileCount) return Number(firm.normal_price);
+  let rate = country === 'nigeria' ? 1500 : 20;
+  try {
+    const rows = await db.getAddonPrices();
+    const row = (rows || []).find(r => r.country === country);
+    if (row) rate = Number(row.price_per_user_per_month);
+  } catch (e) { /* fall back to default rate */ }
+  return round2(Number(firm.normal_price) + (invoiceCount - profileCount) * rate);
+};
+
 // Build per-user unit cost details. Returns null if not applicable.
-// baseAmount is already the per-user price. The firm's saved normal_price
-// takes precedence as the reference price; falls back to the per
-// (country, plan_type) reference_prices table when not set.
+// baseAmount is already the per-user price. firmNormalPrice (already
+// addon-adjusted by the caller) takes precedence as the reference price;
+// falls back to the per (country, plan_type) reference_prices table.
 const buildUnitCost = async (country, planType, baseAmount, numUsers, includeUnitCost, firmNormalPrice = null) => {
   if (!includeUnitCost || !numUsers || numUsers < 1) return null;
   let refPrice = Number(firmNormalPrice) > 0 ? round2(Number(firmNormalPrice)) : null;
@@ -178,7 +206,8 @@ export const generateInvoice = async (invoiceData) => {
   const country = (homeCountry || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(addonCountries ?? firm.addon_countries);
   const amounts = calculateAmounts(baseAmount, numUsers, duration, country);
-  const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost, firm.normal_price);
+  const refNormalPrice = await effectiveNormalPrice(firm, country, addons);
+  const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost, refNormalPrice);
 
   const template = await loadTemplateBuffer(templateFilenameFor(country, planType));
 
@@ -236,7 +265,8 @@ export const getInvoicePreview = async (invoiceData) => {
   const country = (homeCountry || firm.home_country || 'ghana').toLowerCase();
   const addons = parseAddons(addonCountries ?? firm.addon_countries);
   const amounts = calculateAmounts(baseAmount, numUsers, duration, country);
-  const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost, firm.normal_price);
+  const refNormalPrice = await effectiveNormalPrice(firm, country, addons);
+  const unitCost = await buildUnitCost(country, planType, baseAmount, numUsers, includeUnitCost, refNormalPrice);
   const invoiceNumber = await db.getNextInvoiceNumber();
 
   return {
