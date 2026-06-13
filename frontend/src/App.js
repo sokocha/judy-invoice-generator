@@ -6382,245 +6382,151 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
   const { addToast } = useToast();
   const confirm = useConfirm();
 
-  // Edit draft invoice state
-  const [editingInvoice, setEditingInvoice] = useState(null);
-  const [editForm, setEditForm] = useState({
-    planType: 'standard',
-    duration: '1 Year',
-    numUsers: 1,
-    baseAmount: '',
-    dueDate: ''
-  });
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [loading, setLoading] = useState({});
+  const [displayUSD, setDisplayUSD] = useState(false);
+  const [reminding, setReminding] = useState(false);
 
-  const handleEditDraft = (invoice) => {
-    setEditForm({
-      planType: invoice.plan_type,
-      duration: invoice.duration,
-      numUsers: invoice.num_users,
-      baseAmount: invoice.base_amount,
-      dueDate: invoice.due_date ? invoice.due_date.split('T')[0] : ''
-    });
-    setEditingInvoice(invoice);
-  };
-
-  const handleUpdateDraft = async () => {
-    if (!editingInvoice) return;
-    setIsUpdating(true);
-    try {
-      const result = await api.updateDraftInvoice(editingInvoice.id, editForm);
-      if (result.error) throw new Error(result.error);
-      addToast(`Invoice ${editingInvoice.invoice_number} updated`, 'success');
-      setEditingInvoice(null);
-      onRefresh();
-    } catch (error) {
-      addToast(error.message, 'error');
-    }
-    setIsUpdating(false);
-  };
-
-  const handleDeleteDraft = async (invoice) => {
-    const confirmed = await confirm({
-      title: 'Delete Draft Invoice',
-      message: `Are you sure you want to delete invoice ${invoice.invoice_number}? This action cannot be undone.`,
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-      type: 'danger'
-    });
-    if (!confirmed) return;
-
-    setLoading(prev => ({ ...prev, [`delete-${invoice.id}`]: true }));
-    try {
-      const result = await api.deleteInvoice(invoice.id);
-      if (result.error) throw new Error(result.error);
-      addToast(`Invoice ${invoice.invoice_number} deleted`, 'success');
-      onRefresh();
-    } catch (error) {
-      addToast(error.message, 'error');
-    }
-    setLoading(prev => ({ ...prev, [`delete-${invoice.id}`]: false }));
-  };
-
-  // Calculate preview amounts for edit form (baseAmount is per-user-per-month)
-  const editPreviewAmounts = (() => {
-    const perUser = Number(editForm.baseAmount) || 0;
-    const users = Math.max(1, parseInt(editForm.numUsers) || 1);
-    const monthsParsed = parseInt(editForm.duration, 10);
-    const months = Number.isFinite(monthsParsed) && monthsParsed > 0 ? monthsParsed : 1;
-    const base = perUser * users * months;
-    const gtfl = base * 0.025;
-    const nihl = base * 0.025;
-    const vat = base * 0.15;
-    const total = base + gtfl + nihl + vat;
-    return { base, gtfl, nihl, vat, total };
-  })();
-
-  // Exchange rate (approximate - in production this would be fetched from an API)
-  const GHS_TO_USD = 0.063; // 1 GHS ≈ 0.063 USD
-
+  // Exchange rate (approximate). Disclosed with the figures so the USD
+  // equivalents are interpretable rather than mysterious.
+  const GHS_TO_USD = 0.063;
+  const rateAsOf = formatDate(new Date().toISOString().split('T')[0]);
   const formatUSD = (ghsAmount) => {
     const usd = Number(ghsAmount) * GHS_TO_USD;
     return `$${usd.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   };
 
-  // Calculate metrics
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
+  // Currency-aware sums: invoices can be GHS (Ghana) or NGN (Nigeria),
+  // so we never add the two together into one number.
+  const CCY = (inv) => (inv.home_country === 'nigeria' ? 'NGN' : 'GHS');
+  const sumByCcy = (list) => list.reduce((acc, inv) => {
+    const c = CCY(inv);
+    acc[c] = (acc[c] || 0) + Number(inv.total || 0);
+    return acc;
+  }, { GHS: 0, NGN: 0 });
+  const fmtMoney = (m) => {
+    const parts = [];
+    if (m.GHS) parts.push(formatCurrency(m.GHS, 'GHS'));
+    if (m.NGN) parts.push(formatCurrency(m.NGN, 'NGN'));
+    return parts.length ? parts.join('  +  ') : formatCurrency(0, 'GHS');
+  };
 
-  const thisMonthInvoices = invoices.filter(inv => {
-    const invDate = new Date(inv.created_at);
-    return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
-  });
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const lastM = new Date(currentYear, currentMonth - 1, 1);
+  const inMonth = (inv, m, y) => {
+    const d = new Date(inv.created_at);
+    return d.getMonth() === m && d.getFullYear() === y;
+  };
 
   const sentInvoices = invoices.filter(i => i.status === 'sent');
   const paidInvoices = invoices.filter(i => i.status === 'paid');
   const pendingScheduled = scheduled.filter(s => s.status === 'pending');
 
-  // Overdue invoices (sent more than 7 days ago, past due date, and not paid)
+  const thisMonthPaid = paidInvoices.filter(i => inMonth(i, currentMonth, currentYear));
+  const lastMonthPaid = paidInvoices.filter(i => inMonth(i, lastM.getMonth(), lastM.getFullYear()));
+
+  const collected = sumByCcy(paidInvoices);
+  const thisMonth = sumByCcy(thisMonthPaid);
+  const lastMonthSum = sumByCcy(lastMonthPaid);
+  const outstanding = sumByCcy(sentInvoices);
+  // Trend on the dominant currency (GHS) so the % is meaningful
+  const trendPct = lastMonthSum.GHS > 0
+    ? Math.round(((thisMonth.GHS - lastMonthSum.GHS) / lastMonthSum.GHS) * 100)
+    : null;
+  const collectedRate = invoices.length ? Math.round((paidInvoices.length / invoices.length) * 100) : 0;
+
+  // AR aging by days past due_date
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const overdueInvoices = sentInvoices.filter(inv => {
-    if (!inv.due_date || !inv.sent_at) return false;
-    const dueDate = new Date(inv.due_date);
-    dueDate.setHours(0, 0, 0, 0);
-    const sentDate = new Date(inv.sent_at);
-    sentDate.setHours(0, 0, 0, 0);
-    const daysSinceSent = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));
-    // Only consider overdue if past due date AND sent more than 7 days ago
-    return dueDate < today && daysSinceSent >= 7;
-  }).map(inv => {
-    const sentDate = new Date(inv.sent_at);
-    sentDate.setHours(0, 0, 0, 0);
-    const daysSinceSent = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));
-    return { ...inv, daysSinceSent };
+  const daysPastDue = (inv) => {
+    if (!inv.due_date) return -9999;
+    const d = new Date(inv.due_date);
+    d.setHours(0, 0, 0, 0);
+    return Math.floor((today - d) / (1000 * 60 * 60 * 24));
+  };
+  const agingDefs = [
+    { key: 'current', label: 'Not yet due', color: '#64748b', test: (n) => n < 0 },
+    { key: 'b30', label: '1–30 days', color: '#b45309', test: (n) => n >= 0 && n <= 30 },
+    { key: 'b60', label: '31–60 days', color: '#c2410c', test: (n) => n >= 31 && n <= 60 },
+    { key: 'b90', label: '61–90 days', color: '#dc2626', test: (n) => n >= 61 && n <= 90 },
+    { key: 'b90p', label: '90+ days', color: '#991b1b', test: (n) => n > 90 },
+  ];
+  const aging = agingDefs.map(def => {
+    const items = sentInvoices.filter(inv => def.test(daysPastDue(inv)));
+    return { ...def, count: items.length, sums: sumByCcy(items) };
   });
 
-  // Firms with expiring subscriptions (within 30 days or expired)
+  // Overdue = sent and past its due date
+  const overdueInvoices = sentInvoices
+    .filter(inv => daysPastDue(inv) >= 1)
+    .map(inv => ({ ...inv, daysOverdue: daysPastDue(inv) }))
+    .sort((a, b) => b.daysOverdue - a.daysOverdue);
+  const overdueSum = sumByCcy(overdueInvoices);
+
+  // Firms with expiring/expired subscriptions
   const expiringFirms = firms.filter(firm => {
     const status = getSubscriptionStatus(firm.subscription_end);
     return status.status === 'expiring' || status.status === 'critical' || status.status === 'expired';
   });
 
-  // Revenue calculations
-  const totalRevenue = paidInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
-  const thisMonthRevenue = thisMonthInvoices
-    .filter(inv => inv.status === 'paid')
-    .reduce((sum, inv) => sum + Number(inv.total || 0), 0);
-  const outstandingRevenue = sentInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
+  // Flag unusually large invoices (likely data errors) in the recent list
+  const totalsSorted = invoices.map(i => Number(i.total || 0)).filter(v => v > 0).sort((a, b) => a - b);
+  const medianTotal = totalsSorted.length ? totalsSorted[Math.floor(totalsSorted.length / 2)] : 0;
+  const anomalyThreshold = medianTotal > 0 ? medianTotal * 5 : Infinity;
+
+  const handleSendReminders = async () => {
+    if (overdueInvoices.length === 0) return;
+    const ok = await confirm({
+      title: 'Send payment reminders',
+      message: `Re-send ${overdueInvoices.length} overdue invoice${overdueInvoices.length === 1 ? '' : 's'} to ${overdueInvoices.length === 1 ? 'its firm' : 'their firms'} as payment reminders?`,
+      confirmText: `Send ${overdueInvoices.length} reminder${overdueInvoices.length === 1 ? '' : 's'}`,
+      cancelText: 'Cancel',
+      type: 'warning'
+    });
+    if (!ok) return;
+    setReminding(true);
+    let success = 0, fail = 0;
+    for (const inv of overdueInvoices) {
+      try {
+        const r = await api.sendInvoice(inv.id);
+        if (r && r.error) throw new Error(r.error);
+        success++;
+      } catch (e) {
+        fail++;
+      }
+    }
+    setReminding(false);
+    addToast(`Sent ${success} reminder${success === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? 'warning' : 'success');
+    onRefresh();
+  };
+
+  const moneyDisplay = (m) => {
+    const parts = [];
+    if (displayUSD) {
+      if (m.GHS) parts.push(`${formatUSD(m.GHS)} USD`);
+    } else if (m.GHS) {
+      parts.push(formatCurrency(m.GHS, 'GHS'));
+    }
+    if (m.NGN) parts.push(formatCurrency(m.NGN, 'NGN'));
+    if (parts.length === 0) parts.push(displayUSD ? '$0.00 USD' : formatCurrency(0, 'GHS'));
+    return parts.join('  +  ');
+  };
 
   return (
-    <>
-      {/* Edit Draft Invoice Modal */}
-      {editingInvoice && (
-        <div className="modal-overlay" onClick={() => setEditingInvoice(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <div className="modal-header">
-              <h3>Edit Draft Invoice</h3>
-              <button className="modal-close" onClick={() => setEditingInvoice(null)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f3f4f6', borderRadius: '0.5rem' }}>
-                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Invoice</div>
-                <div style={{ fontWeight: '600' }}>{editingInvoice.invoice_number}</div>
-                <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>{editingInvoice.firm_name}</div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Plan Type</label>
-                <select
-                  className="form-select"
-                  value={editForm.planType}
-                  onChange={(e) => setEditForm({ ...editForm, planType: e.target.value })}
-                >
-                  <option value="standard">Standard</option>
-                  <option value="plus">Plus</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Duration (Months)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  min="1"
-                  max="60"
-                  value={parseInt(editForm.duration) || 12}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 1;
-                    setEditForm({ ...editForm, duration: val === 1 ? '1 month' : `${val} months` });
-                  }}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Number of Users</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  min="1"
-                  value={editForm.numUsers}
-                  onChange={(e) => setEditForm({ ...editForm, numUsers: parseInt(e.target.value) || 1 })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Special Price per User per Month (GHS)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  step="0.01"
-                  value={editForm.baseAmount}
-                  onChange={(e) => setEditForm({ ...editForm, baseAmount: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Due Date</label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={editForm.dueDate}
-                  onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
-                />
-              </div>
-
-              {/* Price Preview */}
-              <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bae6fd' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0369a1', marginBottom: '0.5rem' }}>PRICE BREAKDOWN</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                  <span>Base Amount:</span>
-                  <span>GHS {editPreviewAmounts.base.toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#6b7280' }}>
-                  <span>GTFL (2.5%):</span>
-                  <span>GHS {editPreviewAmounts.gtfl.toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#6b7280' }}>
-                  <span>NIHL (2.5%):</span>
-                  <span>GHS {editPreviewAmounts.nihl.toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#6b7280' }}>
-                  <span>VAT (15%):</span>
-                  <span>GHS {editPreviewAmounts.vat.toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', fontWeight: '600', borderTop: '1px solid #bae6fd', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
-                  <span>Total:</span>
-                  <span>GHS {editPreviewAmounts.total.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setEditingInvoice(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleUpdateDraft} disabled={isUpdating}>
-                {isUpdating ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     <div className="dashboard">
-      {/* Quick Stats */}
+      {/* Currency toggle */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        {displayUSD && (
+          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+            Rate: 1 GHS = ${GHS_TO_USD} · as of {rateAsOf}
+          </span>
+        )}
+        <div style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}>
+          <button onClick={() => setDisplayUSD(false)} style={{ padding: '0.25rem 0.7rem', fontSize: '0.8rem', border: 'none', cursor: 'pointer', background: !displayUSD ? '#1e40af' : '#fff', color: !displayUSD ? '#fff' : '#475569' }}>GHS</button>
+          <button onClick={() => setDisplayUSD(true)} style={{ padding: '0.25rem 0.7rem', fontSize: '0.8rem', border: 'none', cursor: 'pointer', background: displayUSD ? '#1e40af' : '#fff', color: displayUSD ? '#fff' : '#475569' }}>USD</button>
+        </div>
+      </div>
+      {/* KPI stat cards */}
       <div className="dashboard-stats-grid">
         <div className="dashboard-stat-card">
           <div className="dashboard-stat-icon" style={{ background: '#dbeafe', color: '#2563eb' }}>
@@ -6631,11 +6537,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
           <div className="dashboard-stat-content">
             <div className="dashboard-stat-label">Law Firms</div>
             <div className="dashboard-stat-value">{firms.length}</div>
-            {expiringFirms.length > 0 && (
-              <div className="dashboard-stat-sub" style={{ color: '#dc2626' }}>
-                {expiringFirms.length} expiring soon
-              </div>
-            )}
+            <div className="dashboard-stat-sub">in your book</div>
           </div>
         </div>
 
@@ -6647,9 +6549,9 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
             </svg>
           </div>
           <div className="dashboard-stat-content">
-            <div className="dashboard-stat-label">Paid Invoices</div>
-            <div className="dashboard-stat-value">{paidInvoices.length}</div>
-            <div className="dashboard-stat-sub">of {invoices.length} total</div>
+            <div className="dashboard-stat-label">Paid Rate</div>
+            <div className="dashboard-stat-value" style={{ color: '#059669' }}>{collectedRate}%</div>
+            <div className="dashboard-stat-sub">{paidInvoices.length} of {invoices.length} invoices</div>
           </div>
         </div>
 
@@ -6677,34 +6579,79 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
           </div>
           <div className="dashboard-stat-content">
             <div className="dashboard-stat-label">Overdue</div>
-            <div className="dashboard-stat-value">{overdueInvoices.length}</div>
-            <div className="dashboard-stat-sub">need attention</div>
+            <div className="dashboard-stat-value" style={{ color: overdueInvoices.length ? '#dc2626' : undefined }}>{overdueInvoices.length}</div>
+            <div className="dashboard-stat-sub">{moneyDisplay(overdueSum)} at risk</div>
           </div>
         </div>
       </div>
 
-      {/* Revenue Cards */}
+      {/* Collections */}
       <div className="dashboard-revenue-grid">
         <div className="card dashboard-revenue-card">
-          <h3 className="dashboard-revenue-title">Total Revenue (Paid)</h3>
-          <div className="dashboard-revenue-amount">{formatCurrency(totalRevenue)}</div>
-          <div className="dashboard-revenue-usd">{formatUSD(totalRevenue)} USD</div>
+          <h3 className="dashboard-revenue-title">Outstanding (Sent)</h3>
+          <div className="dashboard-revenue-amount" style={{ color: '#b45309' }}>{moneyDisplay(outstanding)}</div>
+          <div className="dashboard-revenue-usd">across {sentInvoices.length} sent invoice{sentInvoices.length === 1 ? '' : 's'}</div>
+        </div>
+
+        <div className="card dashboard-revenue-card">
+          <h3 className="dashboard-revenue-title">Collected (Paid)</h3>
+          <div className="dashboard-revenue-amount" style={{ color: '#059669' }}>{moneyDisplay(collected)}</div>
+          <div className="dashboard-revenue-usd">{paidInvoices.length} of {invoices.length} invoices paid ({collectedRate}%)</div>
         </div>
 
         <div className="card dashboard-revenue-card">
           <h3 className="dashboard-revenue-title">This Month (Paid)</h3>
-          <div className="dashboard-revenue-amount">{formatCurrency(thisMonthRevenue)}</div>
-          <div className="dashboard-revenue-usd">{formatUSD(thisMonthRevenue)} USD</div>
-        </div>
-
-        <div className="card dashboard-revenue-card">
-          <h3 className="dashboard-revenue-title">Outstanding (Sent)</h3>
-          <div className="dashboard-revenue-amount">{formatCurrency(outstandingRevenue)}</div>
-          <div className="dashboard-revenue-usd">{formatUSD(outstandingRevenue)} USD</div>
+          <div className="dashboard-revenue-amount">{moneyDisplay(thisMonth)}</div>
+          <div className="dashboard-revenue-usd">
+            {trendPct === null
+              ? 'no paid invoices last month'
+              : <span style={{ color: trendPct >= 0 ? '#059669' : '#dc2626' }}>{trendPct >= 0 ? '▲' : '▼'} {Math.abs(trendPct)}% vs last month</span>}
+          </div>
         </div>
       </div>
 
-      {/* Quick Actions */}
+      {/* Accounts receivable aging */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Accounts receivable aging</h2>
+          {overdueInvoices.length > 0 && (
+            <LoadingButton
+              className="btn btn-primary"
+              loading={reminding}
+              onClick={handleSendReminders}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+              Send {overdueInvoices.length} reminder{overdueInvoices.length === 1 ? '' : 's'}
+            </LoadingButton>
+          )}
+        </div>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Bucket</th>
+                <th style={{ textAlign: 'right' }}>Invoices</th>
+                <th style={{ textAlign: 'right' }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aging.map(b => (
+                <tr key={b.key}>
+                  <td><span style={{ color: b.color, fontWeight: 600 }}>{b.label}</span></td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{b.count}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{moneyDisplay(b.sums)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Quick Actions (context-aware) */}
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Quick Actions</h2>
@@ -6719,13 +6666,25 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
             </svg>
             Generate Invoice
           </button>
-          <button className="dashboard-action-btn" onClick={() => onNavigate('firms')}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Add Law Firm
-          </button>
+          {overdueInvoices.length > 0 && (
+            <button className="dashboard-action-btn" onClick={handleSendReminders} disabled={reminding}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+              Send {overdueInvoices.length} reminder{overdueInvoices.length === 1 ? '' : 's'}
+            </button>
+          )}
+          {expiringFirms.length > 0 && (
+            <button className="dashboard-action-btn" onClick={() => onNavigateToFirmsWithHighlight(expiringFirms.map(f => f.id))}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              Review {expiringFirms.length} expiring
+            </button>
+          )}
           <button className="dashboard-action-btn" onClick={() => onNavigate('scheduled')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -6735,45 +6694,15 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
             </svg>
             View Scheduled
           </button>
-          <button className="dashboard-action-btn" onClick={() => onNavigate('history')}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Export History
-          </button>
         </div>
       </div>
 
-      {/* Alerts Section */}
-      {(overdueInvoices.length > 0 || expiringFirms.length > 0) && (
+      {/* Attention: expiring subscriptions (overdue lives in the aging widget) */}
+      {expiringFirms.length > 0 && (
         <div className="card dashboard-alerts">
           <div className="card-header">
             <h2 className="card-title">Attention Required</h2>
           </div>
-
-          {overdueInvoices.length > 0 && (
-            <div className="dashboard-alert dashboard-alert-danger">
-              <div className="dashboard-alert-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-              </div>
-              <div className="dashboard-alert-content">
-                <strong>{overdueInvoices.length} Overdue Invoice{overdueInvoices.length > 1 ? 's' : ''}</strong>
-                <p>
-                  {overdueInvoices.slice(0, 3).map(inv => `${inv.firm_name} (${inv.daysSinceSent}d ago)`).join(', ')}
-                  {overdueInvoices.length > 3 && ` and ${overdueInvoices.length - 3} more`}
-                </p>
-              </div>
-              <button className="btn btn-sm btn-secondary" onClick={() => onNavigate('history')}>
-                View
-              </button>
-            </div>
-          )}
 
           {expiringFirms.length > 0 && (
             <div className="dashboard-alert dashboard-alert-warning">
@@ -6802,7 +6731,7 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
         </div>
       )}
 
-      {/* Recent Activity */}
+      {/* Recent Invoices */}
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Recent Invoices</h2>
@@ -6821,72 +6750,43 @@ function DashboardSection({ firms, invoices, scheduled, onNavigate, onNavigateTo
                 <tr>
                   <th>Invoice #</th>
                   <th>Firm</th>
-                  <th>Amount</th>
+                  <th style={{ textAlign: 'right' }}>Amount</th>
                   <th>Status</th>
                   <th>Date</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {invoices.slice(0, 5).map(inv => (
-                  <tr key={inv.id}>
+                {invoices.slice(0, 5).map(inv => {
+                  const ccy = inv.home_country === 'nigeria' ? 'NGN' : 'GHS';
+                  const anomalous = Number(inv.total || 0) > anomalyThreshold;
+                  return (
+                  <tr key={inv.id} onClick={() => onNavigate('history')} style={{ cursor: 'pointer' }}>
                     <td><strong>{inv.invoice_number}</strong></td>
                     <td>{inv.firm_name}</td>
-                    <td>{formatCurrency(inv.total)}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {formatCurrency(inv.total, ccy)}
+                      {anomalous && <div style={{ fontSize: '0.68rem', color: '#b45309' }}>⚠ unusually large — review</div>}
+                    </td>
                     <td>
                       <span className={`badge ${
                         inv.status === 'paid' ? 'badge-green' :
                         inv.status === 'sent' ? 'badge-blue' :
+                        inv.status === 'inactive' ? 'badge-gray' :
                         'badge-yellow'
                       }`}>
                         {inv.status}
                       </span>
                     </td>
                     <td>{formatDate(inv.created_at)}</td>
-                    <td>
-                      {inv.status === 'draft' ? (
-                        <div className="action-buttons">
-                          <Tooltip text="Edit draft">
-                            <button
-                              className="action-btn action-btn-edit"
-                              onClick={() => handleEditDraft(inv)}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                              </svg>
-                            </button>
-                          </Tooltip>
-                          <Tooltip text="Delete draft">
-                            <button
-                              className="action-btn action-btn-delete"
-                              onClick={() => handleDeleteDraft(inv)}
-                              disabled={loading[`delete-${inv.id}`]}
-                            >
-                              {loading[`delete-${inv.id}`] ? '...' : (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <polyline points="3 6 5 6 21 6"/>
-                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                  <line x1="10" y1="11" x2="10" y2="17"/>
-                                  <line x1="14" y1="11" x2="14" y2="17"/>
-                                </svg>
-                              )}
-                            </button>
-                          </Tooltip>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>—</span>
-                      )}
-                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
     </div>
-    </>
   );
 }
 
