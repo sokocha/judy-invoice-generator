@@ -3665,10 +3665,27 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Mirror the server's discount reference: the firm's saved normal price
-  // wins, then the admin pricing (duration-aware), then reference_prices.
+  // Per-addon rate for the selected country (admin pricing, then fallback).
+  const addonRate = (() => {
+    const row = pricing && Array.isArray(pricing.addon_prices)
+      ? pricing.addon_prices.find(a => a.country === formData.homeCountry)
+      : null;
+    return row ? Number(row.price_per_user_per_month) : (ADDON_LIST_PRICES[formData.homeCountry] || 0);
+  })();
+  const pricedAddonCount = (raw) => parseAddons(raw).filter(a => PRICED_ADDONS.includes(a)).length;
+
+  // Mirror the server's discount reference. When plan and country still
+  // match the firm's profile, start from its saved normal price and shift
+  // it by however the chosen addons differ from the profile's; otherwise
+  // derive from the admin pricing, then reference_prices.
   const normalPrice = (() => {
-    if (selectedFirm && Number(selectedFirm.normal_price) > 0) return Number(selectedFirm.normal_price);
+    const sameContext = selectedFirm
+      && formData.homeCountry === (selectedFirm.home_country || 'ghana')
+      && formData.planType === (selectedFirm.plan_type || 'standard');
+    if (sameContext && Number(selectedFirm.normal_price) > 0) {
+      const delta = pricedAddonCount(formData.addonCountries) - pricedAddonCount(selectedFirm.addon_countries);
+      return Number(selectedFirm.normal_price) + delta * addonRate;
+    }
     if (pricing) {
       const derived = normalPriceFromPricing(pricing, formData.homeCountry, formData.planType, formData.duration, formData.addonCountries);
       if (derived > 0) return derived;
