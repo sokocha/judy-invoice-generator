@@ -2881,7 +2881,7 @@ function Alert({ type, message, onClose }) {
 }
 
 // Law Firms Management
-function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
+function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [], invoices = [], onGenerateForFirm }) {
   const [showModal, setShowModal] = useState(false);
   const [editingFirm, setEditingFirm] = useState(null);
   const [formData, setFormData] = useState({
@@ -2905,8 +2905,13 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
+  const [subFilter, setSubFilter] = useState('all');
+  const [sortKey, setSortKey] = useState('firm_name');
+  const [sortDir, setSortDir] = useState('asc');
+  const [detailFirm, setDetailFirm] = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const [showAdvancedEmail, setShowAdvancedEmail] = useState(false);
   const [errors, setErrors] = useState({});
-  const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' });
   const [customCity, setCustomCity] = useState(false);
   const [customDuration, setCustomDuration] = useState(false);
   const [pricing, setPricing] = useState(null);
@@ -2915,6 +2920,49 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
   useEffect(() => {
     api.getPricing().then(setPricing).catch(() => {});
   }, []);
+
+  // Close any open row action menu when clicking elsewhere
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.row-action-menu')) setOpenMenuId(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Money / discount helpers
+  const firmCcy = (f) => (f.home_country === 'nigeria' ? 'NGN' : 'GHS');
+  const annualValue = (f) => (Number(f.base_price) || 0) * (f.num_users || 1) * 12;
+  const firmDiscount = (f) => {
+    const n = Number(f.normal_price) || 0;
+    const b = Number(f.base_price) || 0;
+    return n > 0 && b > 0 && b < n ? Math.round(((n - b) / n) * 10000) / 100 : null;
+  };
+
+  const subMatches = (firm) => {
+    if (subFilter === 'all') return true;
+    const s = getSubscriptionStatus(firm.subscription_end).status;
+    if (subFilter === 'active') return s === 'ok';
+    if (subFilter === 'expiring') return s === 'expiring' || s === 'critical';
+    if (subFilter === 'expired') return s === 'expired';
+    if (subFilter === 'none') return s === 'none';
+    return true;
+  };
+
+  const expiringCount = firms.filter(f => {
+    const s = getSubscriptionStatus(f.subscription_end).status;
+    return s === 'expiring' || s === 'critical';
+  }).length;
+
+  const toggleSort = (k) => {
+    if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(k); setSortDir('asc'); }
+  };
+  const SortHeader = ({ label, k, align }) => (
+    <th onClick={() => toggleSort(k)} style={{ cursor: 'pointer', userSelect: 'none', textAlign: align || 'left', whiteSpace: 'nowrap' }}>
+      {label}{sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+    </th>
+  );
 
   const listNormalPrice = (homeCountry, planType, planDuration, addonCountries) =>
     normalPriceFromPricing(pricing, homeCountry, planType, planDuration, addonCountries);
@@ -2989,13 +3037,30 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
     setErrors(newErrors);
   };
 
-  // Filter firms based on search and plan filter
+  // Filter firms based on search, plan, and subscription status
   const filteredFirms = firms.filter(firm => {
     const matchesSearch = firm.firm_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          firm.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          firm.city.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPlan = planFilter === 'all' || firm.plan_type === planFilter;
-    return matchesSearch && matchesPlan;
+    return matchesSearch && matchesPlan && subMatches(firm);
+  });
+
+  const sortedFirms = [...filteredFirms].sort((a, b) => {
+    let av, bv;
+    switch (sortKey) {
+      case 'num_users': av = a.num_users || 0; bv = b.num_users || 0; break;
+      case 'base_price': av = Number(a.base_price) || 0; bv = Number(b.base_price) || 0; break;
+      case 'annual': av = annualValue(a); bv = annualValue(b); break;
+      case 'subscription_end':
+        av = a.subscription_end ? new Date(a.subscription_end).getTime() : Number.MAX_SAFE_INTEGER;
+        bv = b.subscription_end ? new Date(b.subscription_end).getTime() : Number.MAX_SAFE_INTEGER;
+        break;
+      default: av = (a.firm_name || '').toLowerCase(); bv = (b.firm_name || '').toLowerCase();
+    }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1;
+    if (av > bv) return sortDir === 'asc' ? 1 : -1;
+    return 0;
   });
 
   const handleOpenModal = (firm = null) => {
@@ -3088,29 +3153,17 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
     }
   };
 
-  // Inline editing handlers
-  const startInlineEdit = (id, field, value) => {
-    setInlineEdit({ id, field, value });
-  };
+  // Live pricing summary for the create/edit modal
+  const modalCcy = formData.home_country === 'nigeria' ? 'NGN' : 'GHS';
+  const modalNormal = Number(formData.normal_price) || 0;
+  const modalBase = Number(formData.base_price) || 0;
+  const modalDiscount = modalNormal > 0 && modalBase > 0 && modalBase < modalNormal
+    ? Math.round(((modalNormal - modalBase) / modalNormal) * 10000) / 100 : null;
+  const modalAnnual = modalBase * (formData.num_users || 1) * 12;
 
-  const cancelInlineEdit = () => {
-    setInlineEdit({ id: null, field: null, value: '' });
-  };
-
-  const saveInlineEdit = async (firm) => {
-    if (!inlineEdit.value.trim()) {
-      addToast('Field cannot be empty', 'error');
-      return;
-    }
-    try {
-      await api.updateFirm(firm.id, { ...firm, [inlineEdit.field]: inlineEdit.value });
-      addToast('Updated successfully!', 'success');
-      cancelInlineEdit();
-      onRefresh();
-    } catch (error) {
-      addToast(error.message, 'error');
-    }
-  };
+  const firmInvoices = detailFirm
+    ? invoices.filter(i => i.firm_id === detailFirm.id).slice(0, 5)
+    : [];
 
   return (
     <>
@@ -3137,7 +3190,26 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
             <option value="standard">Standard</option>
             <option value="plus">Plus</option>
           </select>
+          <select
+            className="filter-select"
+            value={subFilter}
+            onChange={e => setSubFilter(e.target.value)}
+          >
+            <option value="all">All Subscriptions</option>
+            <option value="active">Active</option>
+            <option value="expiring">Expiring ≤30d</option>
+            <option value="expired">Expired</option>
+            <option value="none">No subscription</option>
+          </select>
         </div>
+        {subFilter !== 'expiring' && expiringCount > 0 && (
+          <button
+            onClick={() => setSubFilter('expiring')}
+            style={{ margin: '0 0 0.75rem', background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', borderRadius: '20px', padding: '0.375rem 0.875rem', fontSize: '0.8rem', cursor: 'pointer' }}
+          >
+            ⚠ {expiringCount} subscription{expiringCount === 1 ? '' : 's'} expiring within 30 days — show
+          </button>
+        )}
 
         {isLoading ? (
           <TableSkeleton rows={5} columns={7} />
@@ -3169,59 +3241,34 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
             <table>
               <thead>
                 <tr>
-                  <th>Firm Name</th>
+                  <SortHeader label="Firm" k="firm_name" />
                   <th>Plan</th>
-                  <th>Users</th>
-                  <th style={{ minWidth: '140px' }}>Subscription End</th>
-                  <th>Address</th>
-                  <th>Email</th>
+                  <SortHeader label="Users" k="num_users" align="right" />
+                  <SortHeader label="Price / user / mo" k="base_price" align="right" />
+                  <SortHeader label="Annual value" k="annual" align="right" />
+                  <SortHeader label="Subscription End" k="subscription_end" />
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredFirms.map(firm => (
+                {sortedFirms.map(firm => {
+                  const disc = firmDiscount(firm);
+                  const ccy = firmCcy(firm);
+                  const subStatus = getSubscriptionStatus(firm.subscription_end);
+                  return (
                   <tr
                     key={firm.id}
                     ref={el => firmRowRefs.current[firm.id] = el}
                     className={highlightFirmIds.includes(firm.id) ? 'highlight-row' : ''}
+                    onClick={() => setDetailFirm(firm)}
+                    style={{ cursor: 'pointer' }}
                   >
-                    {/* Firm Name */}
+                    {/* Firm Name + email/city sub-line */}
                     <td>
-                      {inlineEdit.id === firm.id && inlineEdit.field === 'firm_name' ? (
-                        <div className="inline-edit-cell">
-                          <input
-                            className="inline-edit-input"
-                            value={inlineEdit.value}
-                            onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') saveInlineEdit(firm);
-                              if (e.key === 'Escape') cancelInlineEdit();
-                            }}
-                            autoFocus
-                          />
-                          <div className="inline-edit-actions">
-                            <button className="inline-edit-btn inline-edit-btn-save" onClick={() => saveInlineEdit(firm)}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                <polyline points="20 6 9 17 4 12"/>
-                              </svg>
-                            </button>
-                            <button className="inline-edit-btn inline-edit-btn-cancel" onClick={cancelInlineEdit}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                <line x1="18" y1="6" x2="6" y2="18"/>
-                                <line x1="6" y1="6" x2="18" y2="18"/>
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <strong
-                          onClick={() => startInlineEdit(firm.id, 'firm_name', firm.firm_name)}
-                          style={{ cursor: 'pointer' }}
-                          title="Click to edit"
-                        >
-                          {firm.firm_name}
-                        </strong>
-                      )}
+                      <strong>{firm.firm_name}</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.125rem' }}>
+                        {firm.email}{firm.city ? ` · ${firm.city}` : ''}
+                      </div>
                     </td>
                     {/* Plan */}
                     <td>
@@ -3230,85 +3277,72 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                       </span>
                     </td>
                     {/* Users */}
-                    <td>{firm.num_users}</td>
-                    {/* Subscription End */}
-                    <td>
-                      {(() => {
-                        const subStatus = getSubscriptionStatus(firm.subscription_end);
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <span>{formatDate(firm.subscription_end)}</span>
-                            <span className={`badge ${subStatus.class}`} style={{ fontSize: '0.65rem' }}>
-                              {subStatus.label}
-                            </span>
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    {/* Address */}
-                    <td>{firm.street_address}, {firm.city}</td>
-                    {/* Email */}
-                    <td>
-                      {inlineEdit.id === firm.id && inlineEdit.field === 'email' ? (
-                        <div className="inline-edit-cell">
-                          <input
-                            className="inline-edit-input"
-                            type="email"
-                            value={inlineEdit.value}
-                            onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') saveInlineEdit(firm);
-                              if (e.key === 'Escape') cancelInlineEdit();
-                            }}
-                            autoFocus
-                          />
-                          <div className="inline-edit-actions">
-                            <button className="inline-edit-btn inline-edit-btn-save" onClick={() => saveInlineEdit(firm)}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                <polyline points="20 6 9 17 4 12"/>
-                              </svg>
-                            </button>
-                            <button className="inline-edit-btn inline-edit-btn-cancel" onClick={cancelInlineEdit}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                <line x1="18" y1="6" x2="6" y2="18"/>
-                                <line x1="6" y1="6" x2="18" y2="18"/>
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <span
-                          onClick={() => startInlineEdit(firm.id, 'email', firm.email)}
-                          style={{ cursor: 'pointer' }}
-                          title="Click to edit"
-                        >
-                          {firm.email}
-                        </span>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{firm.num_users}</td>
+                    {/* Price per user/month */}
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {formatCurrency(firm.base_price || 0, ccy)}
+                      {disc != null && (
+                        <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '0.125rem' }}>{disc}% off list</div>
                       )}
                     </td>
-                    {/* Actions */}
+                    {/* Annual value */}
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#475569' }}>
+                      {formatCurrency(annualValue(firm), ccy)}
+                    </td>
+                    {/* Subscription End */}
                     <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <span>{formatDate(firm.subscription_end)}</span>
+                        <span className={`badge ${subStatus.class}`} style={{ fontSize: '0.65rem' }}>
+                          {subStatus.label}
+                        </span>
+                      </div>
+                    </td>
+                    {/* Actions */}
+                    <td onClick={e => e.stopPropagation()}>
                       <div className="action-buttons">
-                        <Tooltip text="Edit all firm details">
-                          <button className="action-btn action-btn-edit" onClick={() => handleOpenModal(firm)}>
+                        <Tooltip text="New invoice for this firm">
+                          <button className="action-btn action-btn-send" aria-label="New invoice for this firm" onClick={() => onGenerateForFirm && onGenerateForFirm(firm.id)}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                              <line x1="12" y1="18" x2="12" y2="12"/>
+                              <line x1="9" y1="15" x2="15" y2="15"/>
+                            </svg>
+                          </button>
+                        </Tooltip>
+                        <Tooltip text="Edit firm details">
+                          <button className="action-btn action-btn-edit" aria-label="Edit firm details" onClick={() => handleOpenModal(firm)}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                             </svg>
                           </button>
                         </Tooltip>
-                        <Tooltip text="Delete this firm">
-                          <button className="action-btn action-btn-delete" onClick={() => handleDelete(firm.id, firm.firm_name)}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6"/>
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                            </svg>
-                          </button>
-                        </Tooltip>
+                        <div className="row-action-menu" style={{ position: 'relative', display: 'inline-block' }}>
+                          <Tooltip text="More actions">
+                            <button className="action-btn" aria-label="More actions" style={{ background: '#e2e8f0', color: '#475569' }} onClick={() => setOpenMenuId(openMenuId === firm.id ? null : firm.id)}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+                              </svg>
+                            </button>
+                          </Tooltip>
+                          {openMenuId === firm.id && (
+                            <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: '4px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 30, minWidth: '160px', overflow: 'hidden' }}>
+                              <button style={{ display: 'block', width: '100%', padding: '0.5rem 0.875rem', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', color: '#334155' }} onClick={() => { setOpenMenuId(null); setDetailFirm(firm); }}>
+                                View details
+                              </button>
+                              <button style={{ display: 'block', width: '100%', padding: '0.5rem 0.875rem', background: 'none', border: 'none', borderTop: '1px solid #f1f5f9', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', color: '#b91c1c' }} onClick={() => { setOpenMenuId(null); handleDelete(firm.id, firm.firm_name); }}>
+                                Delete firm
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -3316,7 +3350,8 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
       </div>
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingFirm ? 'Edit Law Firm' : 'Add Law Firm'}>
-        <div className="modal-body">
+        <div className="modal-body" style={{ maxHeight: '62vh', overflowY: 'auto' }}>
+          <h4 style={{ margin: '0 0 0.75rem', color: '#1e40af', fontSize: '0.95rem' }}>Identity</h4>
           <div className="form-grid">
             <div className={`form-group ${errors.firm_name ? 'has-error' : formData.firm_name ? 'has-success' : ''}`}>
               <label>Firm Name *</label>
@@ -3343,44 +3378,6 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
                 placeholder="e.g., billing@ensafrica.com"
               />
               {errors.email && <div className="form-error">{errors.email}</div>}
-            </div>
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label>CC Emails</label>
-              <input
-                type="text"
-                value={formData.cc_emails}
-                onChange={e => setFormData({ ...formData, cc_emails: e.target.value })}
-                placeholder="e.g., accounts@firm.com, finance@firm.com (comma-separated)"
-              />
-              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                Additional email addresses to CC on invoices (comma-separated)
-              </small>
-            </div>
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label>BCC Emails</label>
-              <input
-                type="text"
-                value={formData.bcc_emails}
-                onChange={e => setFormData({ ...formData, bcc_emails: e.target.value })}
-                placeholder="e.g., records@firm.com (comma-separated)"
-              />
-              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                Additional email addresses to BCC on invoices (comma-separated)
-              </small>
-            </div>
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={formData.include_default_bcc}
-                  onChange={e => setFormData({ ...formData, include_default_bcc: e.target.checked })}
-                  style={{ width: 'auto', margin: 0 }}
-                />
-                Include hello@judy.legal in BCC
-              </label>
-              <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                JUDY will receive a copy of all invoices sent to this firm
-              </small>
             </div>
             <div className={`form-group ${errors.street_address ? 'has-error' : formData.street_address ? 'has-success' : ''}`}>
               <label>Street Address *</label>
@@ -3449,6 +3446,10 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               </small>
               {errors.city && <div className="form-error">{errors.city}</div>}
             </div>
+          </div>
+
+          <h4 style={{ margin: '1.25rem 0 0.75rem', color: '#1e40af', fontSize: '0.95rem' }}>Plan &amp; Pricing</h4>
+          <div className="form-grid">
             <div className="form-group">
               <label>Plan Type</label>
               <select
@@ -3585,6 +3586,21 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               </small>
               {errors.base_price && <div className="form-error">{errors.base_price}</div>}
             </div>
+            {modalBase > 0 && (
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#0369a1' }}>
+                  This firm pays <strong>{modalCcy} {modalBase.toFixed(2)}/user/mo</strong>
+                  {modalDiscount != null
+                    ? ` — ${modalDiscount}% off the ${modalCcy} ${modalNormal.toFixed(2)} list price`
+                    : modalNormal > 0 && modalBase === modalNormal ? ' — at list price' : ''}
+                  . Annual value: <strong>{formatCurrency(modalAnnual, modalCcy)}</strong> ({formData.num_users || 1} user{(formData.num_users || 1) === 1 ? '' : 's'} × 12 mo).
+                </div>
+              </div>
+            )}
+          </div>
+
+          <h4 style={{ margin: '1.25rem 0 0.75rem', color: '#1e40af', fontSize: '0.95rem' }}>Subscription</h4>
+          <div className="form-grid">
             <div className="form-group">
               <label>Subscription Start</label>
               <input
@@ -3604,20 +3620,117 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [] }) {
               {formData.subscription_end && <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>{formatDate(formData.subscription_end)}</small>}
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowAdvancedEmail(v => !v)}
+            style={{ margin: '1.25rem 0 0', background: 'none', border: 'none', color: '#1e40af', fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+          >
+            {showAdvancedEmail ? '▾' : '▸'} Email recipients
+            {!showAdvancedEmail && (formData.cc_emails || formData.bcc_emails) && (
+              <span style={{ fontWeight: 400, color: '#64748b', fontSize: '0.8rem' }}>(extra recipients set)</span>
+            )}
+          </button>
+          {showAdvancedEmail && (
+            <div className="form-grid" style={{ marginTop: '0.75rem' }}>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>CC Emails <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>(optional)</span></label>
+                <input
+                  type="text"
+                  value={formData.cc_emails}
+                  onChange={e => setFormData({ ...formData, cc_emails: e.target.value })}
+                  placeholder="e.g., accounts@firm.com, finance@firm.com (comma-separated)"
+                />
+                <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                  Additional email addresses to CC on invoices (comma-separated)
+                </small>
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>BCC Emails <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>(optional)</span></label>
+                <input
+                  type="text"
+                  value={formData.bcc_emails}
+                  onChange={e => setFormData({ ...formData, bcc_emails: e.target.value })}
+                  placeholder="e.g., records@firm.com (comma-separated)"
+                />
+                <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                  Additional email addresses to BCC on invoices (comma-separated)
+                </small>
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.include_default_bcc}
+                    onChange={e => setFormData({ ...formData, include_default_bcc: e.target.checked })}
+                    style={{ width: 'auto', margin: 0 }}
+                  />
+                  Include hello@judy.legal in BCC
+                </label>
+                <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                  JUDY will receive a copy of all invoices sent to this firm
+                </small>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #e2e8f0' }}>
           <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
           <LoadingButton className="btn btn-primary" onClick={handleSave} loading={loading}>
             {editingFirm ? 'Update' : 'Add Firm'}
           </LoadingButton>
         </div>
       </Modal>
+
+      {/* Firm Detail Modal */}
+      {detailFirm && (() => {
+        const ccy = firmCcy(detailFirm);
+        const disc = firmDiscount(detailFirm);
+        const row = (label, value) => (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem' }}>
+            <span style={{ color: '#64748b' }}>{label}</span>
+            <span style={{ textAlign: 'right' }}>{value}</span>
+          </div>
+        );
+        return (
+          <Modal isOpen={true} onClose={() => setDetailFirm(null)} title={detailFirm.firm_name}>
+            <div className="modal-body" style={{ maxHeight: '62vh', overflowY: 'auto' }}>
+              {row('Email', detailFirm.email)}
+              {detailFirm.cc_emails && row('CC', detailFirm.cc_emails)}
+              {detailFirm.bcc_emails && row('BCC', detailFirm.bcc_emails)}
+              {row('Address', `${detailFirm.street_address}, ${detailFirm.city}`)}
+              {row('Plan', `${planLabel(detailFirm.plan_type)} · ${COUNTRY_LABELS[detailFirm.home_country || 'ghana']}`)}
+              {detailFirm.addon_countries && row('Addons', detailFirm.addon_countries)}
+              {row('Billing cycle', detailFirm.plan_duration || '12 months')}
+              {row('Users', detailFirm.num_users || 1)}
+              {Number(detailFirm.normal_price) > 0 && row('Normal price', `${ccy} ${Number(detailFirm.normal_price).toFixed(2)}/user/mo`)}
+              {row('Special price', `${ccy} ${Number(detailFirm.base_price || 0).toFixed(2)}/user/mo${disc != null ? ` (${disc}% off)` : ''}`)}
+              {row('Annual value', formatCurrency(annualValue(detailFirm), ccy))}
+              {row('Subscription', `${formatDate(detailFirm.subscription_start)} → ${formatDate(detailFirm.subscription_end)}`)}
+              <div style={{ marginTop: '1rem', marginBottom: '0.25rem', fontWeight: 600, color: '#334155' }}>Recent invoices</div>
+              {firmInvoices.length === 0 ? (
+                <div style={{ color: '#94a3b8', fontSize: '0.85rem', padding: '0.25rem 0' }}>No invoices yet.</div>
+              ) : firmInvoices.map(inv => (
+                <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.85rem' }}>
+                  <span>{inv.invoice_number} · {inv.status}</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(inv.total, ccy)} · {formatDate(inv.due_date)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="modal-footer" style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #e2e8f0' }}>
+              <button className="btn btn-secondary" onClick={() => setDetailFirm(null)}>Close</button>
+              <button className="btn btn-secondary" onClick={() => { const f = detailFirm; setDetailFirm(null); handleOpenModal(f); }}>Edit</button>
+              <button className="btn btn-primary" onClick={() => { const id = detailFirm.id; setDetailFirm(null); if (onGenerateForFirm) onGenerateForFirm(id); }}>New invoice</button>
+            </div>
+          </Modal>
+        );
+      })()}
     </>
   );
 }
 
 // Generate Invoice Section
-function GenerateInvoiceSection({ firms, onRefresh }) {
+function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInitialFirmConsumed }) {
   const [formData, setFormData] = useState({
     firmId: '',
     planType: 'standard',
@@ -3646,6 +3759,14 @@ function GenerateInvoiceSection({ firms, onRefresh }) {
 
   // Get selected firm's email
   const selectedFirm = formData.firmId ? firms.find(f => f.id === parseInt(formData.firmId)) : null;
+
+  // Preselect a firm when arriving from "New invoice for this firm"
+  useEffect(() => {
+    if (initialFirmId) {
+      setFormData(prev => ({ ...prev, firmId: String(initialFirmId) }));
+      if (onInitialFirmConsumed) onInitialFirmConsumed();
+    }
+  }, [initialFirmId]);
 
   useEffect(() => {
     api.getReferencePrices()
@@ -7148,6 +7269,7 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [highlightFirmIds, setHighlightFirmIds] = useState([]);
+  const [pendingGenerateFirmId, setPendingGenerateFirmId] = useState(null);
   const { addToast } = useToast();
   const { user, logout } = useAuth();
 
@@ -7157,6 +7279,12 @@ function AppContent() {
     setActiveTab('firms');
     // Clear highlight after 3 seconds
     setTimeout(() => setHighlightFirmIds([]), 3000);
+  };
+
+  // Jump to the Generate tab with a firm preselected
+  const navigateToGenerateForFirm = (firmId) => {
+    setPendingGenerateFirmId(firmId);
+    setActiveTab('generate');
   };
 
   const loadData = useCallback(async () => {
@@ -7340,7 +7468,12 @@ function AppContent() {
             )}
             {activeTab === 'generate' && (
               <>
-                <GenerateInvoiceSection firms={firms} onRefresh={loadData} />
+                <GenerateInvoiceSection
+                  firms={firms}
+                  onRefresh={loadData}
+                  initialFirmId={pendingGenerateFirmId}
+                  onInitialFirmConsumed={() => setPendingGenerateFirmId(null)}
+                />
                 <InvoiceHistorySection
                   invoices={invoices}
                   onRefresh={loadData}
@@ -7352,7 +7485,14 @@ function AppContent() {
               </>
             )}
             {activeTab === 'firms' && (
-              <FirmsSection firms={firms} onRefresh={loadData} isLoading={loading} highlightFirmIds={highlightFirmIds} />
+              <FirmsSection
+                firms={firms}
+                onRefresh={loadData}
+                isLoading={loading}
+                highlightFirmIds={highlightFirmIds}
+                invoices={invoices}
+                onGenerateForFirm={navigateToGenerateForFirm}
+              />
             )}
             {activeTab === 'scheduled' && (
               <ScheduledSection firms={firms} scheduled={scheduled} onRefresh={loadData} />
