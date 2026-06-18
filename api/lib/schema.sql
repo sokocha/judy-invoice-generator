@@ -106,6 +106,15 @@ BEGIN
   END IF;
 END $$;
 
+-- Add amount_paid column if it doesn't exist (amount actually received, may be
+-- less than the invoiced total when tax is withheld)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'amount_paid') THEN
+    ALTER TABLE invoices ADD COLUMN amount_paid NUMERIC(12,2);
+  END IF;
+END $$;
+
 -- Scheduled Invoices table
 CREATE TABLE IF NOT EXISTS scheduled_invoices (
   id SERIAL PRIMARY KEY,

@@ -278,6 +278,18 @@ export default async function handler(req, res) {
     `;
     migrations.push('invoices.receipt_sent_at');
 
+    // invoices.amount_paid: amount actually received (may be less than the
+    // invoiced total, e.g. withholding tax)
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'amount_paid') THEN
+          ALTER TABLE invoices ADD COLUMN amount_paid NUMERIC(12,2);
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.amount_paid');
+
     // email_config.auto_send_receipt: toggle for auto-emailing receipts on payment
     await sql`
       DO $$

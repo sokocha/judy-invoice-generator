@@ -2557,7 +2557,11 @@ const api = {
     body: JSON.stringify(data)
   }).then(r => r.json()),
   sendInvoice: (id) => authFetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
-  markInvoicePaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  markInvoicePaid: (id, amountPaid) => authFetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amountPaid })
+  }).then(r => r.json()),
   emailReceipt: (id) => authFetch(`${API_BASE}/api/invoices?action=email-receipt&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoiceUnpaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-unpaid&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoiceInactive: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-inactive&id=${id}`, { method: 'POST' }).then(r => r.json()),
@@ -5178,6 +5182,8 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [openActionMenu, setOpenActionMenu] = useState(null);
   const [detailInvoice, setDetailInvoice] = useState(null);
+  const [paymentModal, setPaymentModal] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
   const itemsPerPage = 10;
   const { addToast } = useToast();
   const confirm = useConfirm();
@@ -5383,31 +5389,37 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setSendingToAccountant(false);
   };
 
-  const handleMarkPaid = async (id, invoiceNumber) => {
-    const confirmed = await confirm({
-      title: 'Mark Invoice as Paid',
-      message: `Mark invoice ${invoiceNumber} as paid? This will email the receipt to the firm's contacts and the accountant (if auto-send is enabled).`,
-      confirmText: 'Mark Paid',
-      cancelText: 'Cancel',
-      type: 'info'
-    });
-    if (!confirmed) return;
-    setLoading(prev => ({ ...prev, [`${id}-paid`]: true }));
+  const handleMarkPaid = (inv) => {
+    // Open the Record Payment modal, pre-filled with the invoiced total.
+    setPaymentAmount(inv.total != null ? String(inv.total) : '');
+    setPaymentModal(inv);
+  };
+
+  const submitMarkPaid = async () => {
+    if (!paymentModal) return;
+    const inv = paymentModal;
+    const amount = Number(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      addToast('Enter a valid amount received', 'error');
+      return;
+    }
+    setLoading(prev => ({ ...prev, [`${inv.id}-paid`]: true }));
     try {
-      const result = await api.markInvoicePaid(id);
+      const result = await api.markInvoicePaid(inv.id, amount);
       if (result.error) throw new Error(result.error);
       if (result.receiptEmailed) {
-        addToast(result.message || `Invoice ${invoiceNumber} marked as paid and receipt emailed`, 'success');
+        addToast(result.message || `Invoice ${inv.invoice_number} marked as paid and receipt emailed`, 'success');
       } else if (result.emailWarning) {
-        addToast(`Invoice ${invoiceNumber} marked as paid, but the receipt email failed: ${result.emailWarning}`, 'warning');
+        addToast(`Invoice ${inv.invoice_number} marked as paid, but the receipt email failed: ${result.emailWarning}`, 'warning');
       } else {
-        addToast(`Invoice ${invoiceNumber} marked as paid`, 'success');
+        addToast(`Invoice ${inv.invoice_number} marked as paid`, 'success');
       }
+      setPaymentModal(null);
       onRefresh();
     } catch (error) {
       addToast(error.message, 'error');
     }
-    setLoading(prev => ({ ...prev, [`${id}-paid`]: false }));
+    setLoading(prev => ({ ...prev, [`${inv.id}-paid`]: false }));
   };
 
   const handleResendReceipt = async (id, invoiceNumber) => {
@@ -5587,6 +5599,9 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               {detailInvoice.home_country !== 'nigeria' && row('NIHL (2.5%)', formatCurrency(detailInvoice.nihl, ccy))}
               {row(detailInvoice.home_country === 'nigeria' ? 'VAT (7.5%)' : 'VAT (15%)', formatCurrency(detailInvoice.vat, ccy))}
               {row('Total', <strong>{formatCurrency(detailInvoice.total, ccy)}</strong>)}
+              {detailInvoice.status === 'paid' && detailInvoice.amount_paid != null &&
+                Number(detailInvoice.amount_paid) !== Number(detailInvoice.total) &&
+                row('Amount received', <strong>{formatCurrency(detailInvoice.amount_paid, ccy)}</strong>)}
               {row('Due date', formatDate(detailInvoice.due_date))}
               {detailInvoice.sent_at && row('Sent', formatDate(detailInvoice.sent_at))}
               {detailInvoice.addon_countries && row('Addons', detailInvoice.addon_countries)}
@@ -5601,6 +5616,51 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
               )}
               <button className="btn btn-primary" onClick={() => { handleDownload(detailInvoice.id, detailInvoice.invoice_number, 'pdf'); }}>
                 Download PDF
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* Record Payment Modal */}
+      {paymentModal && (() => {
+        const ccy = paymentModal.home_country === 'nigeria' ? 'NGN' : 'GHS';
+        const amt = Number(paymentAmount);
+        const invalid = !(amt > 0);
+        const shortfall = Number(paymentModal.total) - amt;
+        const busy = loading[`${paymentModal.id}-paid`];
+        return (
+          <Modal isOpen={true} onClose={() => setPaymentModal(null)} title={`Record Payment — ${paymentModal.invoice_number}`}>
+            <div className="modal-body">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem' }}>
+                <span style={{ color: '#64748b' }}>Invoiced total</span>
+                <span style={{ textAlign: 'right' }}><strong>{formatCurrency(paymentModal.total, ccy)}</strong></span>
+              </div>
+              <div className="form-group" style={{ marginTop: '1rem' }}>
+                <label>Amount received ({ccy})</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={paymentAmount}
+                  onChange={e => setPaymentAmount(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !invalid && !busy) submitMarkPaid(); }}
+                  autoFocus
+                />
+                <small style={{ display: 'block', color: '#64748b', marginTop: '0.35rem' }}>
+                  Pre-filled with the invoiced total. If tax was withheld, enter the amount actually received — the receipt reflects this figure.
+                </small>
+                {!invalid && shortfall > 0 && (
+                  <small style={{ display: 'block', color: '#b45309', marginTop: '0.35rem' }}>
+                    {formatCurrency(shortfall, ccy)} less than invoiced (e.g. withholding tax).
+                  </small>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setPaymentModal(null)} disabled={busy}>Cancel</button>
+              <button className="btn btn-primary" onClick={submitMarkPaid} disabled={invalid || busy}>
+                {busy ? 'Processing…' : 'Mark Paid'}
               </button>
             </div>
           </Modal>
@@ -5984,7 +6044,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                               <button
                                 className="action-btn action-btn-paid"
                                 aria-label="Mark as paid"
-                                onClick={() => handleMarkPaid(inv.id, inv.invoice_number)}
+                                onClick={() => handleMarkPaid(inv)}
                                 disabled={loading[`${inv.id}-paid`]}
                               >
                                 {loading[`${inv.id}-paid`] ? '...' : (

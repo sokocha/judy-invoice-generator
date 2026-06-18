@@ -363,6 +363,41 @@ export async function markReceiptSent(id) {
   await sql`UPDATE invoices SET receipt_sent_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
 }
 
+// Mark an invoice paid, recording the amount actually received (which may be
+// less than the invoiced total, e.g. when the client withholds tax).
+export async function recordInvoicePayment(id, amountPaid) {
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP`;
+  } catch (e) { /* column exists */ }
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2)`;
+  } catch (e) { /* column exists */ }
+  await sql`
+    UPDATE invoices
+    SET status = 'paid', paid_at = CURRENT_TIMESTAMP, amount_paid = ${amountPaid}
+    WHERE id = ${id}
+  `;
+}
+
+// Revert a paid invoice back to "sent", clearing payment state so a later
+// re-mark prompts for the amount and re-sends the receipt cleanly.
+export async function revertInvoiceToSent(id) {
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP`;
+  } catch (e) { /* column exists */ }
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2)`;
+  } catch (e) { /* column exists */ }
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receipt_sent_at TIMESTAMP`;
+  } catch (e) { /* column exists */ }
+  await sql`
+    UPDATE invoices
+    SET status = 'sent', paid_at = NULL, amount_paid = NULL, receipt_sent_at = NULL
+    WHERE id = ${id}
+  `;
+}
+
 // Users
 export async function getUserByEmail(email) {
   const rows = await sql`

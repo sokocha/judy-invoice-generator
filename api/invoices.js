@@ -148,13 +148,23 @@ export default async function handler(req, res) {
       });
     }
 
-    // POST /api/invoices?action=mark-paid&id=123
+    // POST /api/invoices?action=mark-paid&id=123  body: { amountPaid }
     if (req.method === 'POST' && action === 'mark-paid' && id) {
       const invoice = await db.getInvoiceById(id);
       if (!invoice) {
         return res.status(404).json({ error: 'Invoice not found' });
       }
-      await db.updateInvoiceStatus(id, 'paid');
+
+      // Amount actually received; defaults to the invoiced total. May be less
+      // than the total when the client withholds tax.
+      const rawAmount = req.body && req.body.amountPaid != null ? req.body.amountPaid : invoice.total;
+      const amountPaid = Number(rawAmount);
+      if (!Number.isFinite(amountPaid) || amountPaid <= 0) {
+        return res.status(400).json({ error: 'A valid amount received is required' });
+      }
+
+      await db.recordInvoicePayment(id, amountPaid);
+      const paidInvoice = { ...invoice, status: 'paid', amount_paid: amountPaid };
 
       // Auto-send the receipt to the firm's contacts and accountant, unless
       // disabled in settings or already sent for this invoice. Email failures
@@ -165,7 +175,7 @@ export default async function handler(req, res) {
         const config = await db.getEmailConfig();
         const autoSend = config && config.auto_send_receipt !== false;
         if (autoSend && !invoice.receipt_sent_at) {
-          const recipients = await emailReceiptForInvoice(db, { ...invoice, status: 'paid' });
+          const recipients = await emailReceiptForInvoice(db, paidInvoice);
           receiptEmailed = true;
           return res.status(200).json({
             success: true,
@@ -208,8 +218,9 @@ export default async function handler(req, res) {
       if (!invoice) {
         return res.status(404).json({ error: 'Invoice not found' });
       }
-      // Revert to sent status (since it was sent before being marked paid)
-      await db.updateInvoiceStatus(id, 'sent');
+      // Revert to sent status and clear payment state (it was sent before
+      // being marked paid)
+      await db.revertInvoiceToSent(id);
       return res.status(200).json({ success: true, message: 'Invoice marked as unpaid' });
     }
 
