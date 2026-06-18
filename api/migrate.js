@@ -254,6 +254,18 @@ export default async function handler(req, res) {
     `;
     migrations.push('invoices.reference_price');
 
+    // invoices.paid_at: timestamp recorded when an invoice is marked paid,
+    // used as the issue date on payment receipts
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'paid_at') THEN
+          ALTER TABLE invoices ADD COLUMN paid_at TIMESTAMP;
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.paid_at');
+
     // reference_prices table: per (country, plan_type) per-user-per-month
     await sql`
       CREATE TABLE IF NOT EXISTS reference_prices (

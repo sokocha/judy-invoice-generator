@@ -182,7 +182,10 @@ export async function savePricing({ plan_prices = [], addon_prices = [] }) {
 }
 
 export async function updateInvoiceStatus(id, status, sentAt = null) {
-  if (sentAt) {
+  if (status === 'paid') {
+    // Stamp the payment date so receipts can show when payment was received.
+    await sql`UPDATE invoices SET status = ${status}, paid_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
+  } else if (sentAt) {
     await sql`UPDATE invoices SET status = ${status}, sent_at = ${sentAt} WHERE id = ${id}`;
   } else {
     await sql`UPDATE invoices SET status = ${status} WHERE id = ${id}`;
