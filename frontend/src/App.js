@@ -2558,6 +2558,7 @@ const api = {
   }).then(r => r.json()),
   sendInvoice: (id) => authFetch(`${API_BASE}/api/invoices?action=send&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoicePaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-paid&id=${id}`, { method: 'POST' }).then(r => r.json()),
+  emailReceipt: (id) => authFetch(`${API_BASE}/api/invoices?action=email-receipt&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoiceUnpaid: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-unpaid&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoiceInactive: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-inactive&id=${id}`, { method: 'POST' }).then(r => r.json()),
   markInvoiceActive: (id) => authFetch(`${API_BASE}/api/invoices?action=mark-active&id=${id}`, { method: 'POST' }).then(r => r.json()),
@@ -5385,7 +5386,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
   const handleMarkPaid = async (id, invoiceNumber) => {
     const confirmed = await confirm({
       title: 'Mark Invoice as Paid',
-      message: `Mark invoice ${invoiceNumber} as paid?`,
+      message: `Mark invoice ${invoiceNumber} as paid? This will email the receipt to the firm's contacts and the accountant (if auto-send is enabled).`,
       confirmText: 'Mark Paid',
       cancelText: 'Cancel',
       type: 'info'
@@ -5395,12 +5396,38 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     try {
       const result = await api.markInvoicePaid(id);
       if (result.error) throw new Error(result.error);
-      addToast(`Invoice ${invoiceNumber} marked as paid`, 'success');
+      if (result.receiptEmailed) {
+        addToast(result.message || `Invoice ${invoiceNumber} marked as paid and receipt emailed`, 'success');
+      } else if (result.emailWarning) {
+        addToast(`Invoice ${invoiceNumber} marked as paid, but the receipt email failed: ${result.emailWarning}`, 'warning');
+      } else {
+        addToast(`Invoice ${invoiceNumber} marked as paid`, 'success');
+      }
       onRefresh();
     } catch (error) {
       addToast(error.message, 'error');
     }
     setLoading(prev => ({ ...prev, [`${id}-paid`]: false }));
+  };
+
+  const handleResendReceipt = async (id, invoiceNumber) => {
+    const confirmed = await confirm({
+      title: 'Send Receipt',
+      message: `Email the receipt for invoice ${invoiceNumber} to the firm's contacts and the accountant?`,
+      confirmText: 'Send Receipt',
+      cancelText: 'Cancel',
+      type: 'info'
+    });
+    if (!confirmed) return;
+    setLoading(prev => ({ ...prev, [`${id}-resend-receipt`]: true }));
+    try {
+      const result = await api.emailReceipt(id);
+      if (result.error) throw new Error(result.error);
+      addToast(result.message || `Receipt for ${invoiceNumber} emailed`, 'success');
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`${id}-resend-receipt`]: false }));
   };
 
   const handleMarkUnpaid = async (id, invoiceNumber) => {
@@ -6023,6 +6050,9 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                                     </button>
                                     <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleDownloadReceipt(inv.id, inv.invoice_number, 'docx'); }} disabled={loading[`${inv.id}-receipt-docx`]}>
                                       {loading[`${inv.id}-receipt-docx`] ? 'Generating receipt...' : 'Download receipt (Word)'}
+                                    </button>
+                                    <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleResendReceipt(inv.id, inv.invoice_number); }} disabled={loading[`${inv.id}-resend-receipt`]}>
+                                      {loading[`${inv.id}-resend-receipt`] ? 'Sending receipt...' : 'Send receipt by email'}
                                     </button>
                                     <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleMarkUnpaid(inv.id, inv.invoice_number); }}>
                                       Mark as unpaid
@@ -7011,7 +7041,8 @@ function SettingsSection() {
     smtp_pass: '',
     from_email: '',
     from_name: 'JUDY Legal Research',
-    accountant_email: ''
+    accountant_email: '',
+    auto_send_receipt: true
   });
   const [loading, setLoading] = useState(false);
   const [schedulerRunning, setSchedulerRunning] = useState(false);
@@ -7025,7 +7056,7 @@ function SettingsSection() {
   const loadConfig = async () => {
     try {
       const data = await api.getEmailConfig();
-      if (data) setConfig(data);
+      if (data) setConfig(prev => ({ ...prev, ...data }));
     } catch (error) {
       console.error('Failed to load email config:', error);
     }
@@ -7159,7 +7190,7 @@ function SettingsSection() {
           <h2 className="card-title">Accountant Settings</h2>
         </div>
         <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.875rem' }}>
-          Set the email address where paid invoice reports will be sent.
+          Set the email address where paid invoice reports and payment receipts will be sent.
         </p>
         <div className="form-group" style={{ maxWidth: '400px' }}>
           <label>Accountant Email</label>
@@ -7170,8 +7201,24 @@ function SettingsSection() {
             placeholder="e.g., accountant@company.com"
           />
         </div>
+        <div className="form-group" style={{ maxWidth: '520px' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={config.auto_send_receipt !== false}
+              onChange={e => setConfig({ ...config, auto_send_receipt: e.target.checked })}
+              style={{ marginTop: '0.2rem' }}
+            />
+            <span>
+              Automatically email the receipt when an invoice is marked paid
+              <span style={{ display: 'block', color: '#64748b', fontSize: '0.8125rem' }}>
+                Sends the receipt PDF to the firm's contacts, with the accountant CC'd.
+              </span>
+            </span>
+          </label>
+        </div>
         <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
-          Save Accountant Email
+          Save Accountant Settings
         </button>
       </div>
 

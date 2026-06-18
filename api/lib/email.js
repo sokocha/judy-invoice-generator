@@ -149,6 +149,108 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
   return result;
 };
 
+// Send a payment receipt to the firm's contacts and (visibly CC'd) the accountant.
+export const sendReceiptEmail = async (invoice, firm, documentBuffer, filename, options = {}) => {
+  const config = await db.getEmailConfig();
+
+  if (!config || !config.smtp_host) {
+    throw new Error('Email is not configured. Please configure SMTP settings first.');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: config.smtp_host,
+    port: config.smtp_port || 587,
+    secure: config.smtp_port === 465,
+    auth: {
+      user: config.smtp_user,
+      pass: config.smtp_pass
+    }
+  });
+
+  const currency = (invoice.home_country || firm.home_country) === 'nigeria' ? 'NGN' : 'GHS';
+  const total = Number(invoice.total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const receiptNo = `REC-${invoice.invoice_number}`;
+
+  // Reuse the invoice recipient model: firm primary -> To, firm CC + any
+  // per-invoice extra recipients + the accountant (visible) -> CC,
+  // firm BCC + default JUDY address -> BCC.
+  const firmCcEmails = firm.cc_emails
+    ? firm.cc_emails.split(',').map(e => e.trim()).filter(e => e)
+    : [];
+  const invoiceExtraEmails = invoice.additional_emails
+    ? invoice.additional_emails.split(',').map(e => e.trim()).filter(e => e)
+    : [];
+  const accountantCc = config.accountant_email ? [config.accountant_email.trim()] : [];
+  const allCcEmails = [...new Set([...firmCcEmails, ...invoiceExtraEmails, ...accountantCc])]
+    .filter(e => e && e !== firm.email);
+
+  const firmBccEmails = firm.bcc_emails
+    ? firm.bcc_emails.split(',').map(e => e.trim()).filter(e => e)
+    : [];
+  const defaultBcc = firm.include_default_bcc !== false ? ['hello@judy.legal'] : [];
+  const allBccEmails = [...new Set([...firmBccEmails, ...defaultBcc])];
+
+  const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #9C27B0;">Payment Receipt from JUDY</h2>
+
+        <p>Dear ${firm.firm_name},</p>
+
+        <p>Thank you for your payment. We confirm that we have received payment in full
+        for your JUDY ${invoice.plan_type === 'plus' ? 'Plus' : 'Standard'} Plan subscription.
+        Your receipt is attached for your records.</p>
+
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;"><strong>Receipt Number:</strong></td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;">${receiptNo}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;"><strong>Invoice Number:</strong></td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;">${invoice.invoice_number}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;"><strong>Amount Paid:</strong></td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #9C27B0;">${currency} ${total}</td>
+          </tr>
+        </table>
+
+        <p>If you have any questions about this receipt, please don't hesitate to contact us.</p>
+
+        <p>Thank you for choosing JUDY!</p>
+
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+
+        <p style="color: #718096; font-size: 12px;">
+          JUDY INNOVATIVE TECH LTD<br/>
+          19 Banana Street, East Legon<br/>
+          Accra, Ghana
+        </p>
+      </div>
+    `;
+
+  const mailOptions = {
+    from: `"${config.from_name || 'JUDY'}" <${config.from_email}>`,
+    to: firm.email,
+    cc: allCcEmails.length > 0 ? allCcEmails.join(', ') : undefined,
+    bcc: allBccEmails.length > 0 ? allBccEmails.join(', ') : undefined,
+    subject: `Payment Receipt ${receiptNo} from JUDY`,
+    html: emailHtml,
+    attachments: [
+      {
+        filename,
+        content: documentBuffer
+      }
+    ]
+  };
+
+  const result = await transporter.sendMail(mailOptions);
+
+  // Recipient list for the success message (To + visible CC).
+  const recipients = [...new Set([firm.email, ...allCcEmails])].filter(Boolean);
+  return { result, recipients };
+};
+
 // Verify email configuration
 export const verifyEmailConfig = async () => {
   const config = await db.getEmailConfig();

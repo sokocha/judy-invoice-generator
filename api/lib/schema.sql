@@ -98,6 +98,14 @@ BEGIN
   END IF;
 END $$;
 
+-- Add receipt_sent_at column if it doesn't exist (records when the receipt was emailed)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'receipt_sent_at') THEN
+    ALTER TABLE invoices ADD COLUMN receipt_sent_at TIMESTAMP;
+  END IF;
+END $$;
+
 -- Scheduled Invoices table
 CREATE TABLE IF NOT EXISTS scheduled_invoices (
   id SERIAL PRIMARY KEY,
@@ -151,6 +159,14 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_config' AND column_name = 'accountant_email') THEN
     ALTER TABLE email_config ADD COLUMN accountant_email VARCHAR(255);
+  END IF;
+END $$;
+
+-- Add auto_send_receipt column if it doesn't exist (toggle for auto-emailing receipts on payment)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_config' AND column_name = 'auto_send_receipt') THEN
+    ALTER TABLE email_config ADD COLUMN auto_send_receipt BOOLEAN DEFAULT true;
   END IF;
 END $$;
 
