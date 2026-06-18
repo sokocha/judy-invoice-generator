@@ -2577,6 +2577,15 @@ const api = {
     if (!response.ok) throw new Error('Failed to download invoice');
     return response.blob();
   },
+  downloadReceipt: async (id, format = 'pdf') => {
+    const response = await authFetch(`${API_BASE}/api/invoices?action=download-receipt&id=${id}&format=${format}`);
+    if (!response.ok) {
+      let message = 'Failed to download receipt';
+      try { message = (await response.json()).error || message; } catch (e) { /* non-JSON body */ }
+      throw new Error(message);
+    }
+    return response.blob();
+  },
   emailAccountant: () => authFetch(`${API_BASE}/api/invoices?action=email-accountant`, { method: 'POST' }).then(r => r.json()),
 
   // Reference prices (per-country per-plan unit costs)
@@ -5274,6 +5283,25 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
     setLoading(prev => ({ ...prev, [`${id}-${format}`]: false }));
   };
 
+  const handleDownloadReceipt = async (id, invoiceNumber, format = 'pdf') => {
+    setLoading(prev => ({ ...prev, [`${id}-receipt-${format}`]: true }));
+    try {
+      const blob = await api.downloadReceipt(id, format);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Receipt_${invoiceNumber}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      addToast(`Downloaded receipt for ${invoiceNumber}`, 'success');
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setLoading(prev => ({ ...prev, [`${id}-receipt-${format}`]: false }));
+  };
+
   const handleSend = async (invoice) => {
     // Build full recipient list from firm email, firm CC emails, and invoice additional emails
     const firmCcEmails = invoice.cc_emails
@@ -5539,6 +5567,11 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setDetailInvoice(null)}>Close</button>
+              {detailInvoice.status === 'paid' && (
+                <button className="btn btn-secondary" onClick={() => { handleDownloadReceipt(detailInvoice.id, detailInvoice.invoice_number, 'pdf'); }} disabled={loading[`${detailInvoice.id}-receipt-pdf`]}>
+                  {loading[`${detailInvoice.id}-receipt-pdf`] ? 'Generating...' : 'Download Receipt'}
+                </button>
+              )}
               <button className="btn btn-primary" onClick={() => { handleDownload(detailInvoice.id, detailInvoice.invoice_number, 'pdf'); }}>
                 Download PDF
               </button>
@@ -5984,9 +6017,17 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                                   </button>
                                 )}
                                 {inv.status === 'paid' && (
-                                  <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleMarkUnpaid(inv.id, inv.invoice_number); }}>
-                                    Mark as unpaid
-                                  </button>
+                                  <>
+                                    <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleDownloadReceipt(inv.id, inv.invoice_number, 'pdf'); }} disabled={loading[`${inv.id}-receipt-pdf`]}>
+                                      {loading[`${inv.id}-receipt-pdf`] ? 'Generating receipt...' : 'Download receipt (PDF)'}
+                                    </button>
+                                    <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleDownloadReceipt(inv.id, inv.invoice_number, 'docx'); }} disabled={loading[`${inv.id}-receipt-docx`]}>
+                                      {loading[`${inv.id}-receipt-docx`] ? 'Generating receipt...' : 'Download receipt (Word)'}
+                                    </button>
+                                    <button style={{ ...menuItemStyle, borderTop: '1px solid #f1f5f9' }} onClick={() => { setOpenActionMenu(null); handleMarkUnpaid(inv.id, inv.invoice_number); }}>
+                                      Mark as unpaid
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             )}

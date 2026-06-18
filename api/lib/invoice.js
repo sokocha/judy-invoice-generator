@@ -23,7 +23,63 @@ const COUNTRY_LABELS = {
   nigeria: 'Nigeria'
 };
 
+// Currency unit names for spelling out amounts on receipts.
+const CURRENCY_UNITS = {
+  GHS: { major: 'Cedis', minor: 'Pesewas' },
+  NGN: { major: 'Naira', minor: 'Kobo' }
+};
+
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
+
+// Spell out a whole number (0 - 999,999,999) in English words.
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+const threeDigitsToWords = (n) => {
+  let words = '';
+  if (n >= 100) {
+    words += `${ONES[Math.floor(n / 100)]} Hundred`;
+    n %= 100;
+    if (n > 0) words += ' ';
+  }
+  if (n >= 20) {
+    words += TENS[Math.floor(n / 10)];
+    if (n % 10 > 0) words += ` ${ONES[n % 10]}`;
+  } else if (n > 0) {
+    words += ONES[n];
+  }
+  return words;
+};
+
+const wholeNumberToWords = (num) => {
+  let n = Math.floor(Math.abs(num));
+  if (n === 0) return 'Zero';
+  const groups = [{ value: 1000000, label: 'Million' }, { value: 1000, label: 'Thousand' }, { value: 1, label: '' }];
+  const parts = [];
+  for (const { value, label } of groups) {
+    if (n >= value) {
+      const count = Math.floor(n / value);
+      n %= value;
+      parts.push(`${threeDigitsToWords(count)}${label ? ` ${label}` : ''}`);
+    }
+  }
+  return parts.join(' ').trim();
+};
+
+// Spell out a money amount with its currency units, e.g.
+// "Two Thousand Three Hundred Cedis and Fifty Pesewas Only".
+export const amountToWords = (amount, currency) => {
+  const units = CURRENCY_UNITS[currency] || { major: currency, minor: 'Cents' };
+  const value = round2(Number(amount) || 0);
+  const major = Math.floor(value);
+  const minor = Math.round((value - major) * 100);
+  let words = `${wholeNumberToWords(major)} ${units.major}`;
+  if (minor > 0) {
+    words += ` and ${wholeNumberToWords(minor)} ${units.minor}`;
+  }
+  return `${words} Only`;
+};
 
 // Parse the leading integer from a duration string like "12 months" or "1 month".
 export const parseDurationMonths = (duration) => {
@@ -366,6 +422,118 @@ export const regenerateInvoice = async (invoiceRecord, format = 'pdf') => {
 
   const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
+  return {
+    buffer: pdfBuffer,
+    filename: `${baseFilename}.pdf`,
+    contentType: 'application/pdf'
+  };
+};
+
+const DOCX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const RECEIPT_TEMPLATE = 'Receipt_Template.docx';
+
+// Convert a generated .docx buffer to PDF via Cloudmersive.
+const convertDocxToPdf = async (docxBuffer) => {
+  const cloudmersiveApiKey = process.env.CLOUDMERSIVE_API_KEY;
+  if (!cloudmersiveApiKey) {
+    throw new Error('CLOUDMERSIVE_API_KEY not set');
+  }
+  const formData = new FormData();
+  const docxBlob = new Blob([docxBuffer], { type: DOCX_CONTENT_TYPE });
+  formData.append('inputFile', docxBlob, 'document.docx');
+
+  const response = await fetch('https://api.cloudmersive.com/convert/docx/to/pdf', {
+    method: 'POST',
+    headers: { 'Apikey': cloudmersiveApiKey },
+    body: formData
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`PDF conversion failed: ${response.status} - ${errorText}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+};
+
+// Build the "Access Period" date range shown on the receipt. Prefer the
+// firm's subscription window; otherwise derive it from the payment date
+// and the invoice's duration in months.
+const buildAccessRange = (firm, fallbackStart, months) => {
+  let start = firm.subscription_start ? new Date(firm.subscription_start) : new Date(fallbackStart);
+  if (isNaN(start.getTime())) start = new Date(fallbackStart);
+
+  let end;
+  if (firm.subscription_end) {
+    end = new Date(firm.subscription_end);
+  } else {
+    end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+    end.setDate(end.getDate() - 1);
+  }
+  return `${formatDate(start)} – ${formatDate(end)}`;
+};
+
+// Generate a payment receipt for a paid invoice, reusing the stored record.
+// No new data is collected — everything is pulled from the invoice and firm.
+export const generateReceipt = async (invoiceRecord, format = 'pdf') => {
+  const firm = await db.getFirmById(invoiceRecord.firm_id);
+  if (!firm) throw new Error('Law firm not found');
+
+  const country = (invoiceRecord.home_country || firm.home_country || 'ghana').toLowerCase();
+  const countryLabel = COUNTRY_LABELS[country] || COUNTRY_LABELS.ghana;
+  const currency = country === 'nigeria' ? 'NGN' : 'GHS';
+  const months = parseDurationMonths(invoiceRecord.duration);
+
+  // base_amount is the per-user-per-month price; shown as-is on the receipt
+  // (the template labels it "per user / month").
+  const pricePerUser = round2(Number(invoiceRecord.base_amount) || 0);
+  const amountPaid = Number(invoiceRecord.total) || 0;
+
+  // Receipt is issued when the invoice was marked paid; fall back to today
+  // for invoices paid before paid_at was tracked.
+  const issueDate = invoiceRecord.paid_at || new Date();
+
+  // Comma-separated address; only append the country when the city field
+  // doesn't already include it (some firms store "City, Country" in city).
+  const addressParts = [firm.street_address, firm.city];
+  if (!String(firm.city || '').toLowerCase().includes(countryLabel.toLowerCase())) {
+    addressParts.push(countryLabel);
+  }
+  const lawFirmAddress = addressParts.filter(Boolean).join(', ');
+
+  const templateData = {
+    ReceiptNo: `REC-${invoiceRecord.invoice_number}`,
+    IssueDate: formatDate(issueDate),
+    LawFirm: firm.firm_name,
+    LawFirmAddress: lawFirmAddress,
+    Currency: currency,
+    LicensesUserCount: String(invoiceRecord.num_users),
+    PricePerUser: formatAmount(pricePerUser),
+    AccessPeriod: buildAccessRange(firm, issueDate, months),
+    AccessDuration: invoiceRecord.duration,
+    AmountPaid: formatAmount(amountPaid),
+    AmountInWords: amountToWords(amountPaid, currency)
+  };
+
+  const template = await loadTemplateBuffer(RECEIPT_TEMPLATE);
+  const result = await createReport({
+    template,
+    data: templateData,
+    cmdDelimiter: ['{{', '}}'],
+    processLineBreaks: true
+  });
+  const docxBuffer = Buffer.from(result);
+
+  const baseFilename = `Receipt_${invoiceRecord.invoice_number}_${firm.firm_name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  if (format === 'docx') {
+    return {
+      buffer: docxBuffer,
+      filename: `${baseFilename}.docx`,
+      contentType: DOCX_CONTENT_TYPE
+    };
+  }
+
+  const pdfBuffer = await convertDocxToPdf(docxBuffer);
   return {
     buffer: pdfBuffer,
     filename: `${baseFilename}.pdf`,

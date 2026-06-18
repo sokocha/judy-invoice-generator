@@ -50,6 +50,25 @@ export default async function handler(req, res) {
       return res.send(result.buffer);
     }
 
+    // GET /api/invoices?action=download-receipt&id=123&format=pdf|docx
+    if (req.method === 'GET' && action === 'download-receipt' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      if (invoice.status !== 'paid') {
+        return res.status(400).json({ error: 'A receipt is only available for paid invoices' });
+      }
+
+      const format = req.query.format || 'pdf';
+      const { generateReceipt } = await import('./lib/invoice.js');
+      const result = await generateReceipt(invoice, format);
+
+      res.setHeader('Content-Type', result.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      return res.send(result.buffer);
+    }
+
     // POST /api/invoices?action=preview
     if (req.method === 'POST' && action === 'preview') {
       const { getInvoicePreview } = await import('./lib/invoice.js');

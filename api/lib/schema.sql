@@ -90,6 +90,14 @@ BEGIN
   END IF;
 END $$;
 
+-- Add paid_at column if it doesn't exist (records when an invoice was marked paid)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'paid_at') THEN
+    ALTER TABLE invoices ADD COLUMN paid_at TIMESTAMP;
+  END IF;
+END $$;
+
 -- Scheduled Invoices table
 CREATE TABLE IF NOT EXISTS scheduled_invoices (
   id SERIAL PRIMARY KEY,
