@@ -430,7 +430,7 @@ export const regenerateInvoice = async (invoiceRecord, format = 'pdf') => {
 };
 
 const DOCX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const RECEIPT_TEMPLATE = 'Receipt_JUDY_template.docx';
+const RECEIPT_TEMPLATE = 'Receipt_Template.docx';
 
 // Convert a generated .docx buffer to PDF via Cloudmersive.
 const convertDocxToPdf = async (docxBuffer) => {

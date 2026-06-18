@@ -24,7 +24,7 @@ async function uploadTemplates() {
     'Standard_Template_Polished.docx',
     'Plus_Template_Polished_Nigeria.docx',
     'Standard_Template_Polished_Nigeria.docx',
-    'Receipt_JUDY_template.docx'
+    'Receipt_Template.docx'
   ];
 
   console.log('Uploading templates to Vercel Blob...\n');
