@@ -483,20 +483,28 @@ export const generateReceipt = async (invoiceRecord, format = 'pdf') => {
   const currency = country === 'nigeria' ? 'NGN' : 'GHS';
   const months = parseDurationMonths(invoiceRecord.duration);
 
-  // base_amount is the per-user-per-month price; show the per-user cost for
-  // the whole access period on the receipt.
-  const pricePerUser = round2((Number(invoiceRecord.base_amount) || 0) * months);
+  // base_amount is the per-user-per-month price; shown as-is on the receipt
+  // (the template labels it "per user / month").
+  const pricePerUser = round2(Number(invoiceRecord.base_amount) || 0);
   const amountPaid = Number(invoiceRecord.total) || 0;
 
   // Receipt is issued when the invoice was marked paid; fall back to today
   // for invoices paid before paid_at was tracked.
   const issueDate = invoiceRecord.paid_at || new Date();
 
+  // Comma-separated address; only append the country when the city field
+  // doesn't already include it (some firms store "City, Country" in city).
+  const addressParts = [firm.street_address, firm.city];
+  if (!String(firm.city || '').toLowerCase().includes(countryLabel.toLowerCase())) {
+    addressParts.push(countryLabel);
+  }
+  const lawFirmAddress = addressParts.filter(Boolean).join(', ');
+
   const templateData = {
     ReceiptNo: `REC-${invoiceRecord.invoice_number}`,
     IssueDate: formatDate(issueDate),
     LawFirm: firm.firm_name,
-    LawFirmAddress: `${firm.street_address}\n${firm.city}, ${countryLabel}`,
+    LawFirmAddress: lawFirmAddress,
     Currency: currency,
     LicensesUserCount: String(invoiceRecord.num_users),
     PricePerUser: formatAmount(pricePerUser),
