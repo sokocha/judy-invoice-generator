@@ -486,7 +486,12 @@ export const generateReceipt = async (invoiceRecord, format = 'pdf') => {
   // base_amount is the per-user-per-month price; shown as-is on the receipt
   // (the template labels it "per user / month").
   const pricePerUser = round2(Number(invoiceRecord.base_amount) || 0);
-  const amountPaid = Number(invoiceRecord.total) || 0;
+  // The receipt reflects the amount actually received, which can be less than
+  // the invoiced total (e.g. withholding tax). Falls back to the total for
+  // invoices paid before amount_paid was tracked.
+  const amountPaid = Number(
+    invoiceRecord.amount_paid != null ? invoiceRecord.amount_paid : invoiceRecord.total
+  ) || 0;
 
   // Receipt is issued when the invoice was marked paid; fall back to today
   // for invoices paid before paid_at was tracked.

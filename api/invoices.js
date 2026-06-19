@@ -148,14 +148,68 @@ export default async function handler(req, res) {
       });
     }
 
-    // POST /api/invoices?action=mark-paid&id=123
+    // POST /api/invoices?action=mark-paid&id=123  body: { amountPaid }
     if (req.method === 'POST' && action === 'mark-paid' && id) {
       const invoice = await db.getInvoiceById(id);
       if (!invoice) {
         return res.status(404).json({ error: 'Invoice not found' });
       }
-      await db.updateInvoiceStatus(id, 'paid');
-      return res.status(200).json({ success: true, message: 'Invoice marked as paid' });
+
+      // Amount actually received; defaults to the invoiced total. May be less
+      // than the total when the client withholds tax.
+      const rawAmount = req.body && req.body.amountPaid != null ? req.body.amountPaid : invoice.total;
+      const amountPaid = Number(rawAmount);
+      if (!Number.isFinite(amountPaid) || amountPaid <= 0) {
+        return res.status(400).json({ error: 'A valid amount received is required' });
+      }
+
+      await db.recordInvoicePayment(id, amountPaid);
+      const paidInvoice = { ...invoice, status: 'paid', amount_paid: amountPaid };
+
+      // Auto-send the receipt to the firm's contacts and accountant, unless
+      // disabled in settings or already sent for this invoice. Email failures
+      // never block the status change.
+      let receiptEmailed = false;
+      let emailWarning = null;
+      try {
+        const config = await db.getEmailConfig();
+        const autoSend = config && config.auto_send_receipt !== false;
+        if (autoSend && !invoice.receipt_sent_at) {
+          const recipients = await emailReceiptForInvoice(db, paidInvoice);
+          receiptEmailed = true;
+          return res.status(200).json({
+            success: true,
+            message: `Invoice marked as paid. Receipt emailed to ${recipients.join(', ')}`,
+            receiptEmailed
+          });
+        }
+      } catch (error) {
+        console.error('Auto-send receipt failed:', error);
+        emailWarning = error.message;
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Invoice marked as paid',
+        receiptEmailed,
+        emailWarning
+      });
+    }
+
+    // POST /api/invoices?action=email-receipt&id=123 - send/resend the receipt
+    if (req.method === 'POST' && action === 'email-receipt' && id) {
+      const invoice = await db.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      if (invoice.status !== 'paid') {
+        return res.status(400).json({ error: 'A receipt can only be emailed for paid invoices' });
+      }
+      const recipients = await emailReceiptForInvoice(db, invoice);
+      return res.status(200).json({
+        success: true,
+        message: `Receipt emailed to ${recipients.join(', ')}`
+      });
     }
 
     // POST /api/invoices?action=mark-unpaid&id=123
@@ -164,8 +218,9 @@ export default async function handler(req, res) {
       if (!invoice) {
         return res.status(404).json({ error: 'Invoice not found' });
       }
-      // Revert to sent status (since it was sent before being marked paid)
-      await db.updateInvoiceStatus(id, 'sent');
+      // Revert to sent status and clear payment state (it was sent before
+      // being marked paid)
+      await db.revertInvoiceToSent(id);
       return res.status(200).json({ success: true, message: 'Invoice marked as unpaid' });
     }
 
@@ -294,4 +349,19 @@ export default async function handler(req, res) {
     console.error('Invoices API error:', error);
     return res.status(500).json({ error: error.message, stack: error.stack });
   }
+}
+
+// Generate a paid invoice's receipt PDF, email it to the firm's contacts and
+// the accountant, and record that it was sent. Returns the visible recipients.
+async function emailReceiptForInvoice(db, invoice) {
+  const { generateReceipt } = await import('./lib/invoice.js');
+  const { sendReceiptEmail } = await import('./lib/email.js');
+
+  const firm = await db.getFirmById(invoice.firm_id);
+  if (!firm) throw new Error('Law firm not found');
+
+  const receipt = await generateReceipt(invoice, 'pdf');
+  const { recipients } = await sendReceiptEmail(invoice, firm, receipt.buffer, receipt.filename);
+  await db.markReceiptSent(invoice.id);
+  return recipients;
 }

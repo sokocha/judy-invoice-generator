@@ -266,6 +266,41 @@ export default async function handler(req, res) {
     `;
     migrations.push('invoices.paid_at');
 
+    // invoices.receipt_sent_at: timestamp recorded when the receipt was emailed,
+    // used to avoid auto-resending on re-marking an invoice paid
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'receipt_sent_at') THEN
+          ALTER TABLE invoices ADD COLUMN receipt_sent_at TIMESTAMP;
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.receipt_sent_at');
+
+    // invoices.amount_paid: amount actually received (may be less than the
+    // invoiced total, e.g. withholding tax)
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'amount_paid') THEN
+          ALTER TABLE invoices ADD COLUMN amount_paid NUMERIC(12,2);
+        END IF;
+      END $$
+    `;
+    migrations.push('invoices.amount_paid');
+
+    // email_config.auto_send_receipt: toggle for auto-emailing receipts on payment
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_config' AND column_name = 'auto_send_receipt') THEN
+          ALTER TABLE email_config ADD COLUMN auto_send_receipt BOOLEAN DEFAULT true;
+        END IF;
+      END $$
+    `;
+    migrations.push('email_config.auto_send_receipt');
+
     // reference_prices table: per (country, plan_type) per-user-per-month
     await sql`
       CREATE TABLE IF NOT EXISTS reference_prices (

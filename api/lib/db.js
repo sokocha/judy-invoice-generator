@@ -324,14 +324,22 @@ export async function getEmailConfig() {
     smtp_pass: '',
     from_email: '',
     from_name: 'JUDY Legal Research',
-    accountant_email: ''
+    accountant_email: '',
+    auto_send_receipt: true
   };
 }
 
 export async function updateEmailConfig(config) {
+  // Self-heal the column for databases that predate auto-send receipts.
+  try {
+    await sql`ALTER TABLE email_config ADD COLUMN IF NOT EXISTS auto_send_receipt BOOLEAN DEFAULT true`;
+  } catch (e) {
+    // Column already exists or DB doesn't support IF NOT EXISTS
+  }
+  const autoSend = config.auto_send_receipt !== false;
   await sql`
-    INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, from_name, accountant_email)
-    VALUES (1, ${config.smtp_host}, ${config.smtp_port}, ${config.smtp_user}, ${config.smtp_pass}, ${config.from_email}, ${config.from_name}, ${config.accountant_email || null})
+    INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, from_name, accountant_email, auto_send_receipt)
+    VALUES (1, ${config.smtp_host}, ${config.smtp_port}, ${config.smtp_user}, ${config.smtp_pass}, ${config.from_email}, ${config.from_name}, ${config.accountant_email || null}, ${autoSend})
     ON CONFLICT (id) DO UPDATE SET
       smtp_host = ${config.smtp_host},
       smtp_port = ${config.smtp_port},
@@ -339,7 +347,54 @@ export async function updateEmailConfig(config) {
       smtp_pass = ${config.smtp_pass},
       from_email = ${config.from_email},
       from_name = ${config.from_name},
-      accountant_email = ${config.accountant_email || null}
+      accountant_email = ${config.accountant_email || null},
+      auto_send_receipt = ${autoSend}
+  `;
+}
+
+// Record that a payment receipt was emailed for an invoice (used to avoid
+// re-sending automatically when an invoice is re-marked paid).
+export async function markReceiptSent(id) {
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receipt_sent_at TIMESTAMP`;
+  } catch (e) {
+    // Column already exists or DB doesn't support IF NOT EXISTS
+  }
+  await sql`UPDATE invoices SET receipt_sent_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
+}
+
+// Mark an invoice paid, recording the amount actually received (which may be
+// less than the invoiced total, e.g. when the client withholds tax).
+export async function recordInvoicePayment(id, amountPaid) {
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP`;
+  } catch (e) { /* column exists */ }
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2)`;
+  } catch (e) { /* column exists */ }
+  await sql`
+    UPDATE invoices
+    SET status = 'paid', paid_at = CURRENT_TIMESTAMP, amount_paid = ${amountPaid}
+    WHERE id = ${id}
+  `;
+}
+
+// Revert a paid invoice back to "sent", clearing payment state so a later
+// re-mark prompts for the amount and re-sends the receipt cleanly.
+export async function revertInvoiceToSent(id) {
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP`;
+  } catch (e) { /* column exists */ }
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2)`;
+  } catch (e) { /* column exists */ }
+  try {
+    await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receipt_sent_at TIMESTAMP`;
+  } catch (e) { /* column exists */ }
+  await sql`
+    UPDATE invoices
+    SET status = 'sent', paid_at = NULL, amount_paid = NULL, receipt_sent_at = NULL
+    WHERE id = ${id}
   `;
 }
 
