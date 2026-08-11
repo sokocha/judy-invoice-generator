@@ -7562,15 +7562,8 @@ function AppContent() {
         setActiveTab('generate');
         addToast('Navigated to Generate Invoice', 'info', 2000);
       }
-      // Ctrl+F or Cmd+F: Go to Firms tab
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !e.shiftKey) {
-        // Only intercept if not in an input/textarea
-        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-          e.preventDefault();
-          setActiveTab('firms');
-          addToast('Navigated to Law Firms', 'info', 2000);
-        }
-      }
+      // Ctrl+F/Cmd+F is deliberately NOT intercepted — it stays the
+      // browser's find-in-page so users can search within each tab.
       // Ctrl+H or Cmd+H: Go to History tab
       if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
         e.preventDefault();
@@ -7651,7 +7644,7 @@ function AppContent() {
             <button
               className={`nav-btn ${activeTab === 'firms' ? 'active' : ''}`}
               onClick={() => setActiveTab('firms')}
-              title={`Law Firms (Ctrl+F)${expiringCount > 0 ? ` — ${expiringCount} subscription${expiringCount === 1 ? '' : 's'} expiring within 30 days` : ''}`}
+              title={`Law Firms${expiringCount > 0 ? ` — ${expiringCount} subscription${expiringCount === 1 ? '' : 's'} expiring within 30 days` : ''}`}
             >
               Law Firms
               {expiringCount > 0 && <span className="nav-badge nav-badge-warning">{expiringCount}</span>}
