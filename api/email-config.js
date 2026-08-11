@@ -31,7 +31,8 @@ export default async function handler(req, res) {
       const config = await db.getEmailConfig();
       return res.status(200).json({
         ...config,
-        smtp_pass: config.smtp_pass ? '********' : ''
+        smtp_pass: config.smtp_pass ? '********' : '',
+        backup_smtp_pass: config.backup_smtp_pass ? '********' : ''
       });
     }
 
@@ -45,9 +46,13 @@ export default async function handler(req, res) {
         smtp_user: trimmed(req.body.smtp_user),
         from_email: trimmed(req.body.from_email),
         accountant_email: trimmed(req.body.accountant_email),
+        backup_smtp_user: trimmed(req.body.backup_smtp_user),
         smtp_pass: (req.body.smtp_pass && req.body.smtp_pass.trim() && req.body.smtp_pass !== '********')
           ? normalizeSmtpPass(req.body.smtp_pass)
-          : currentConfig.smtp_pass
+          : currentConfig.smtp_pass,
+        backup_smtp_pass: (req.body.backup_smtp_pass && req.body.backup_smtp_pass.trim() && req.body.backup_smtp_pass !== '********')
+          ? normalizeSmtpPass(req.body.backup_smtp_pass)
+          : currentConfig.backup_smtp_pass
       };
 
       await db.updateEmailConfig(newConfig);

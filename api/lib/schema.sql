@@ -179,6 +179,12 @@ BEGIN
   END IF;
 END $$;
 
+-- SMTP auth-failure tracking and backup alert sender (for "app password revoked" alerts)
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS smtp_auth_failed_at TIMESTAMP;
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS last_auth_alert_at TIMESTAMP;
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS backup_smtp_user VARCHAR(255);
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS backup_smtp_pass VARCHAR(255);
+
 -- Insert default email config row
 INSERT INTO email_config (id, from_name) VALUES (1, 'JUDY Legal Research')
 ON CONFLICT (id) DO NOTHING;

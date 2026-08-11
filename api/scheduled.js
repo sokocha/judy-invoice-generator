@@ -111,7 +111,7 @@ async function processSingleScheduledInvoice(id) {
 async function processScheduledInvoices() {
   const db = await import('./lib/db.js');
   const { generateInvoicePDF } = await import('./lib/invoice.js');
-  const { sendInvoiceEmail } = await import('./lib/email.js');
+  const { sendInvoiceEmail, maybeSendAuthAlert } = await import('./lib/email.js');
 
   const pending = await db.getPendingScheduledInvoices();
   const results = { processed: 0, errors: [] };
@@ -144,9 +144,15 @@ async function processScheduledInvoices() {
       results.processed++;
     } catch (error) {
       console.error(`Error processing scheduled invoice ${scheduled.id}:`, error);
-      results.errors.push({ id: scheduled.id, error: error.message });
+      results.errors.push({ id: scheduled.id, error: error.message, authError: !!error.isSmtpAuthError });
       await db.updateScheduledInvoiceStatus(scheduled.id, 'failed');
     }
+  }
+
+  // If any send failed because Gmail rejected the credentials, alert the
+  // team (via the backup sender) with instructions to mint a new app password.
+  if (results.errors.some(e => e.authError)) {
+    results.authAlert = await maybeSendAuthAlert();
   }
 
   return results;

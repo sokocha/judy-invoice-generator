@@ -23,24 +23,34 @@ const buildTransporter = (config) => nodemailer.createTransport({
   }
 });
 
+const isSmtpAuthError = (error) => error.code === 'EAUTH' || error.responseCode === 535;
+
 // Rewrap SMTP auth failures (Gmail's "535-5.7.8 Username and Password not
 // accepted") into a message that tells the user how to actually fix it.
 const translateSmtpError = (error, config) => {
-  const isAuthError = error.code === 'EAUTH' || error.responseCode === 535;
-  if (!isAuthError) return error;
+  if (!isSmtpAuthError(error)) return error;
   const isGmail = /gmail|googlemail/i.test(config.smtp_host || '');
   const hint = isGmail
     ? 'Gmail rejected the SMTP username/password. Gmail no longer accepts your regular account password — create an App Password (Google Account → Security → 2-Step Verification → App passwords) and enter it in Settings → Email Configuration.'
     : 'The SMTP server rejected the username/password. Please re-enter your SMTP credentials in Settings → Email Configuration.';
   const wrapped = new Error(`${hint} (Server said: ${error.message})`);
   wrapped.cause = error;
+  wrapped.isSmtpAuthError = true;
   return wrapped;
 };
 
 const sendMailSafe = async (transporter, config, mailOptions) => {
   try {
-    return await transporter.sendMail(mailOptions);
+    const result = await transporter.sendMail(mailOptions);
+    // Sending works again — clear the auth-failure flag (and alert throttle).
+    if (config.smtp_auth_failed_at) {
+      await db.clearSmtpAuthFailure().catch(() => {});
+    }
+    return result;
   } catch (error) {
+    if (isSmtpAuthError(error)) {
+      await db.markSmtpAuthFailure().catch(() => {});
+    }
     throw translateSmtpError(error, config);
   }
 };
@@ -291,8 +301,14 @@ export const verifyEmailConfig = async () => {
 
   try {
     await transporter.verify();
+    if (config.smtp_auth_failed_at) {
+      await db.clearSmtpAuthFailure().catch(() => {});
+    }
     return { configured: true, message: 'Email configuration verified successfully' };
   } catch (error) {
+    if (isSmtpAuthError(error)) {
+      await db.markSmtpAuthFailure().catch(() => {});
+    }
     return { configured: false, message: `Verification failed: ${translateSmtpError(error, config).message}` };
   }
 };
@@ -364,6 +380,119 @@ export const sendAccountantReport = async (csvContent, invoiceCount) => {
 
   const result = await sendMailSafe(transporter, config, mailOptions);
   return { success: true, message: `Report sent to ${config.accountant_email}`, messageId: result.messageId };
+};
+
+// Who gets told when the app can no longer sign in to Gmail to send invoices.
+const AUTH_ALERT_RECIPIENTS = ['sokocha@gmail.com', 'sadiq@judy.legal'];
+const APP_URL = process.env.APP_URL || 'https://invoice.judy.legal';
+
+// When scheduled sends fail because Gmail rejected the app password, email
+// the team telling them exactly how to fix it. The broken credential can't
+// send its own obituary, so this prefers the backup sender (a second Gmail
+// account + app password configured in Settings) and only falls back to the
+// primary sender on the off-chance it still works. Throttled to once a day.
+export const maybeSendAuthAlert = async () => {
+  const config = await db.getEmailConfig();
+
+  if (config.last_auth_alert_at) {
+    const hoursSince = (Date.now() - new Date(config.last_auth_alert_at).getTime()) / 36e5;
+    if (hoursSince < 24) {
+      return { sent: false, reason: 'Alert already sent within the last 24 hours' };
+    }
+  }
+
+  const hasBackup = config.backup_smtp_user && config.backup_smtp_pass;
+  const transporter = buildTransporter(hasBackup
+    ? {
+        smtp_host: 'smtp.gmail.com',
+        smtp_port: 587,
+        smtp_user: config.backup_smtp_user,
+        smtp_pass: config.backup_smtp_pass
+      }
+    : config);
+  const fromAddress = hasBackup ? config.backup_smtp_user : config.from_email;
+
+  const brokenUser = config.smtp_user || 'your sending account';
+  const emailHtml = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1a202c;">
+      <div style="padding: 32px 0 8px;">
+        <h1 style="font-size: 26px; font-weight: 700; margin: 0 0 8px;">Your invoices have stopped sending.</h1>
+        <p style="font-size: 16px; line-height: 1.6; color: #4a5568; margin: 0;">
+          Gmail is refusing to let JUDY sign in as <strong>${brokenUser}</strong>.
+          This almost always means the App Password was revoked &mdash; it happens automatically
+          whenever that account's Google password changes. Scheduled invoices are on hold
+          until you give JUDY a new one.
+        </p>
+      </div>
+
+      <div style="background: #f7fafc; border-radius: 12px; padding: 24px; margin: 24px 0;">
+        <p style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9C27B0; margin: 0 0 16px;">The fix takes two minutes</p>
+
+        <table style="border-collapse: collapse;">
+          <tr>
+            <td style="vertical-align: top; padding: 0 12px 20px 0;"><div style="width: 28px; height: 28px; border-radius: 50%; background: #9C27B0; color: white; font-weight: 700; text-align: center; line-height: 28px;">1</div></td>
+            <td style="padding-bottom: 20px; font-size: 15px; line-height: 1.6;">
+              <strong>Sign in to Google as ${brokenUser}</strong><br/>
+              <span style="color: #4a5568;">and open</span>
+              <a href="https://myaccount.google.com/apppasswords" style="color: #9C27B0;">myaccount.google.com/apppasswords</a><br/>
+              <span style="color: #718096; font-size: 13px;">(If that page asks for it, turn on 2-Step Verification first at
+              <a href="https://myaccount.google.com/security" style="color: #9C27B0;">myaccount.google.com/security</a>.)</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="vertical-align: top; padding: 0 12px 20px 0;"><div style="width: 28px; height: 28px; border-radius: 50%; background: #9C27B0; color: white; font-weight: 700; text-align: center; line-height: 28px;">2</div></td>
+            <td style="padding-bottom: 20px; font-size: 15px; line-height: 1.6;">
+              <strong>Create an app password</strong><br/>
+              <span style="color: #4a5568;">Name it <em>JUDY Invoices</em>. Google shows you 16 letters &mdash; copy them.</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="vertical-align: top; padding: 0 12px 20px 0;"><div style="width: 28px; height: 28px; border-radius: 50%; background: #9C27B0; color: white; font-weight: 700; text-align: center; line-height: 28px;">3</div></td>
+            <td style="padding-bottom: 20px; font-size: 15px; line-height: 1.6;">
+              <strong>Paste it into JUDY</strong><br/>
+              <span style="color: #4a5568;">Open <a href="${APP_URL}" style="color: #9C27B0;">${APP_URL.replace('https://', '')}</a> &rarr; Settings &rarr; Email Configuration &rarr; SMTP Password, then click <em>Save Settings</em>. Spaces are fine &mdash; JUDY removes them for you.</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="vertical-align: top; padding: 0 12px 0 0;"><div style="width: 28px; height: 28px; border-radius: 50%; background: #9C27B0; color: white; font-weight: 700; text-align: center; line-height: 28px;">4</div></td>
+            <td style="font-size: 15px; line-height: 1.6;">
+              <strong>Click Verify Connection</strong><br/>
+              <span style="color: #4a5568;">When it turns green, any scheduled invoices that failed will go out on the next daily run &mdash; nothing is lost.</span>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${APP_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%); color: white; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px;">
+          Open JUDY Settings
+        </a>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+      <p style="color: #718096; font-size: 12px; line-height: 1.6;">
+        You're receiving this because scheduled invoice emails failed with a Gmail sign-in error.
+        You'll get at most one of these per day until it's fixed.<br/>
+        JUDY INNOVATIVE TECH LTD &middot; 19 Banana Street, East Legon, Accra, Ghana
+      </p>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: `"JUDY Invoice Generator" <${fromAddress}>`,
+      to: AUTH_ALERT_RECIPIENTS.join(', '),
+      subject: 'Action needed: JUDY invoices stopped sending — new Gmail App Password required',
+      html: emailHtml
+    });
+    await db.markAuthAlertSent().catch(() => {});
+    return { sent: true, via: hasBackup ? 'backup sender' : 'primary sender', to: AUTH_ALERT_RECIPIENTS };
+  } catch (error) {
+    // Without a working backup sender there is no route out — the in-app
+    // banner is the fallback. Don't throw; the cron run itself succeeded.
+    console.error('Could not deliver SMTP auth alert email:', error.message);
+    return { sent: false, reason: `Alert delivery failed (${hasBackup ? 'backup' : 'primary'} sender): ${error.message}` };
+  }
 };
 
 // Send password reset email
