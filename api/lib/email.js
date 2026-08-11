@@ -1,6 +1,50 @@
 import nodemailer from 'nodemailer';
 import * as db from './db.js';
 
+// Normalize an SMTP password: trim stray whitespace, and strip the grouping
+// spaces Google shows inside app passwords ("abcd efgh ijkl mnop") — Gmail
+// rejects the password with a 535 error if they are sent along.
+export const normalizeSmtpPass = (pass) => {
+  if (!pass) return pass;
+  const trimmed = String(pass).trim();
+  if (/^[a-zA-Z]{4}(\s+[a-zA-Z]{4}){3}$/.test(trimmed)) {
+    return trimmed.replace(/\s+/g, '');
+  }
+  return trimmed;
+};
+
+const buildTransporter = (config) => nodemailer.createTransport({
+  host: (config.smtp_host || '').trim(),
+  port: config.smtp_port || 587,
+  secure: config.smtp_port === 465,
+  auth: {
+    user: (config.smtp_user || '').trim(),
+    pass: normalizeSmtpPass(config.smtp_pass)
+  }
+});
+
+// Rewrap SMTP auth failures (Gmail's "535-5.7.8 Username and Password not
+// accepted") into a message that tells the user how to actually fix it.
+const translateSmtpError = (error, config) => {
+  const isAuthError = error.code === 'EAUTH' || error.responseCode === 535;
+  if (!isAuthError) return error;
+  const isGmail = /gmail|googlemail/i.test(config.smtp_host || '');
+  const hint = isGmail
+    ? 'Gmail rejected the SMTP username/password. Gmail no longer accepts your regular account password — create an App Password (Google Account → Security → 2-Step Verification → App passwords) and enter it in Settings → Email Configuration.'
+    : 'The SMTP server rejected the username/password. Please re-enter your SMTP credentials in Settings → Email Configuration.';
+  const wrapped = new Error(`${hint} (Server said: ${error.message})`);
+  wrapped.cause = error;
+  return wrapped;
+};
+
+const sendMailSafe = async (transporter, config, mailOptions) => {
+  try {
+    return await transporter.sendMail(mailOptions);
+  } catch (error) {
+    throw translateSmtpError(error, config);
+  }
+};
+
 // Send invoice email
 export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, additionalEmails = [], options = {}) => {
   const config = await db.getEmailConfig();
@@ -9,15 +53,7 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
     throw new Error('Email is not configured. Please configure SMTP settings first.');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: config.smtp_host,
-    port: config.smtp_port || 587,
-    secure: config.smtp_port === 465,
-    auth: {
-      user: config.smtp_user,
-      pass: config.smtp_pass
-    }
-  });
+  const transporter = buildTransporter(config);
 
   const total = Number(invoice.total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const dueDate = new Date(invoice.due_date).toLocaleDateString('en-US', {
@@ -141,7 +177,7 @@ export const sendInvoiceEmail = async (invoice, firm, documentBuffer, filename, 
     ]
   };
 
-  const result = await transporter.sendMail(mailOptions);
+  const result = await sendMailSafe(transporter, config, mailOptions);
 
   // Update invoice status
   await db.updateInvoiceStatus(invoice.id, 'sent', new Date().toISOString());
@@ -157,15 +193,7 @@ export const sendReceiptEmail = async (invoice, firm, documentBuffer, filename, 
     throw new Error('Email is not configured. Please configure SMTP settings first.');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: config.smtp_host,
-    port: config.smtp_port || 587,
-    secure: config.smtp_port === 465,
-    auth: {
-      user: config.smtp_user,
-      pass: config.smtp_pass
-    }
-  });
+  const transporter = buildTransporter(config);
 
   const currency = (invoice.home_country || firm.home_country) === 'nigeria' ? 'NGN' : 'GHS';
   const total = Number(invoice.total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -244,7 +272,7 @@ export const sendReceiptEmail = async (invoice, firm, documentBuffer, filename, 
     ]
   };
 
-  const result = await transporter.sendMail(mailOptions);
+  const result = await sendMailSafe(transporter, config, mailOptions);
 
   // Recipient list for the success message (To + visible CC).
   const recipients = [...new Set([firm.email, ...allCcEmails])].filter(Boolean);
@@ -259,21 +287,13 @@ export const verifyEmailConfig = async () => {
     return { configured: false, message: 'Email not configured' };
   }
 
-  const transporter = nodemailer.createTransport({
-    host: config.smtp_host,
-    port: config.smtp_port || 587,
-    secure: config.smtp_port === 465,
-    auth: {
-      user: config.smtp_user,
-      pass: config.smtp_pass
-    }
-  });
+  const transporter = buildTransporter(config);
 
   try {
     await transporter.verify();
     return { configured: true, message: 'Email configuration verified successfully' };
   } catch (error) {
-    return { configured: false, message: `Verification failed: ${error.message}` };
+    return { configured: false, message: `Verification failed: ${translateSmtpError(error, config).message}` };
   }
 };
 
@@ -289,15 +309,7 @@ export const sendAccountantReport = async (csvContent, invoiceCount) => {
     throw new Error('Accountant email is not configured. Please add an accountant email in Settings.');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: config.smtp_host,
-    port: config.smtp_port || 587,
-    secure: config.smtp_port === 465,
-    auth: {
-      user: config.smtp_user,
-      pass: config.smtp_pass
-    }
-  });
+  const transporter = buildTransporter(config);
 
   const today = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -350,7 +362,7 @@ export const sendAccountantReport = async (csvContent, invoiceCount) => {
     ]
   };
 
-  const result = await transporter.sendMail(mailOptions);
+  const result = await sendMailSafe(transporter, config, mailOptions);
   return { success: true, message: `Report sent to ${config.accountant_email}`, messageId: result.messageId };
 };
 
@@ -362,15 +374,7 @@ export const sendPasswordResetEmail = async (email, resetToken, appUrl) => {
     throw new Error('Email is not configured. Please configure SMTP settings first.');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: config.smtp_host,
-    port: config.smtp_port || 587,
-    secure: config.smtp_port === 465,
-    auth: {
-      user: config.smtp_user,
-      pass: config.smtp_pass
-    }
-  });
+  const transporter = buildTransporter(config);
 
   const resetLink = `${appUrl}/reset-password?token=${resetToken}`;
 
@@ -412,6 +416,6 @@ export const sendPasswordResetEmail = async (email, resetToken, appUrl) => {
     `
   };
 
-  const result = await transporter.sendMail(mailOptions);
+  const result = await sendMailSafe(transporter, config, mailOptions);
   return { success: true, messageId: result.messageId };
 };

@@ -1,5 +1,5 @@
 import * as db from './lib/db.js';
-import { verifyEmailConfig } from './lib/email.js';
+import { verifyEmailConfig, normalizeSmtpPass } from './lib/email.js';
 import { authenticate } from './lib/auth.js';
 
 export default async function handler(req, res) {
@@ -38,10 +38,15 @@ export default async function handler(req, res) {
     // PUT /api/email-config
     if (req.method === 'PUT') {
       const currentConfig = await db.getEmailConfig();
+      const trimmed = (v) => (typeof v === 'string' ? v.trim() : v);
       const newConfig = {
         ...req.body,
-        smtp_pass: (req.body.smtp_pass && req.body.smtp_pass !== '********')
-          ? req.body.smtp_pass
+        smtp_host: trimmed(req.body.smtp_host),
+        smtp_user: trimmed(req.body.smtp_user),
+        from_email: trimmed(req.body.from_email),
+        accountant_email: trimmed(req.body.accountant_email),
+        smtp_pass: (req.body.smtp_pass && req.body.smtp_pass.trim() && req.body.smtp_pass !== '********')
+          ? normalizeSmtpPass(req.body.smtp_pass)
           : currentConfig.smtp_pass
       };
 

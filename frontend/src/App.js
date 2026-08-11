@@ -2647,13 +2647,21 @@ const formatDate = (dateStr) => {
   });
 };
 
+// Parse a YYYY-MM-DD string as a local-midnight Date. new Date('YYYY-MM-DD')
+// parses as UTC midnight, which shifts to the previous day in timezones
+// behind UTC and makes "is this date in the past?" checks wrong.
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
 // Get due date status and class
 const getDueDateStatus = (dueDate) => {
   if (!dueDate) return { class: '', label: '' };
-  const due = new Date(dueDate);
+  const due = parseLocalDate(dueDate);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
@@ -2671,10 +2679,9 @@ const getDueDateStatus = (dueDate) => {
 // Get subscription status (expiring, expired, or OK)
 const getSubscriptionStatus = (subscriptionEnd) => {
   if (!subscriptionEnd) return { class: 'badge-gray', label: 'No subscription', status: 'none' };
-  const end = new Date(subscriptionEnd);
+  const end = parseLocalDate(subscriptionEnd);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
@@ -3855,9 +3862,8 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
     if (!(Number(formData.baseAmount) > 0)) list.push('Special price is 0 — the invoice total will be 0.');
     if ((parseInt(formData.numUsers) || 0) < 1) list.push('Number of users is less than 1.');
     if (formData.dueDate) {
-      const due = new Date(formData.dueDate);
+      const due = parseLocalDate(formData.dueDate);
       const today = new Date();
-      due.setHours(0, 0, 0, 0);
       today.setHours(0, 0, 0, 0);
       if (due < today) list.push(`Due date (${formatDate(formData.dueDate)}) is in the past.`);
     }
@@ -4695,8 +4701,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     if (!dateStr) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const scheduleDate = new Date(dateStr);
-    scheduleDate.setHours(0, 0, 0, 0);
+    const scheduleDate = parseLocalDate(dateStr);
     return scheduleDate <= today;
   };
 
@@ -7215,6 +7220,15 @@ function SettingsSection() {
               onChange={e => setConfig({ ...config, smtp_pass: e.target.value })}
               placeholder="Enter password"
             />
+            {/gmail|googlemail/i.test(config.smtp_host || '') && (
+              <small style={{ marginTop: '0.25rem', display: 'block', color: '#94a3b8' }}>
+                Gmail requires an{' '}
+                <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">
+                  App Password
+                </a>{' '}
+                (Google Account → Security → 2-Step Verification → App passwords). Your regular Gmail password won't work.
+              </small>
+            )}
           </div>
           <div className="form-group">
             <label>From Email</label>
