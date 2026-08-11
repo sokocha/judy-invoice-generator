@@ -2647,13 +2647,21 @@ const formatDate = (dateStr) => {
   });
 };
 
+// Parse a YYYY-MM-DD string as a local-midnight Date. new Date('YYYY-MM-DD')
+// parses as UTC midnight, which shifts to the previous day in timezones
+// behind UTC and makes "is this date in the past?" checks wrong.
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
 // Get due date status and class
 const getDueDateStatus = (dueDate) => {
   if (!dueDate) return { class: '', label: '' };
-  const due = new Date(dueDate);
+  const due = parseLocalDate(dueDate);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
@@ -2671,10 +2679,9 @@ const getDueDateStatus = (dueDate) => {
 // Get subscription status (expiring, expired, or OK)
 const getSubscriptionStatus = (subscriptionEnd) => {
   if (!subscriptionEnd) return { class: 'badge-gray', label: 'No subscription', status: 'none' };
-  const end = new Date(subscriptionEnd);
+  const end = parseLocalDate(subscriptionEnd);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
@@ -3855,9 +3862,8 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
     if (!(Number(formData.baseAmount) > 0)) list.push('Special price is 0 — the invoice total will be 0.');
     if ((parseInt(formData.numUsers) || 0) < 1) list.push('Number of users is less than 1.');
     if (formData.dueDate) {
-      const due = new Date(formData.dueDate);
+      const due = parseLocalDate(formData.dueDate);
       const today = new Date();
-      due.setHours(0, 0, 0, 0);
       today.setHours(0, 0, 0, 0);
       if (due < today) list.push(`Due date (${formatDate(formData.dueDate)}) is in the past.`);
     }
@@ -4695,8 +4701,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     if (!dateStr) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const scheduleDate = new Date(dateStr);
-    scheduleDate.setHours(0, 0, 0, 0);
+    const scheduleDate = parseLocalDate(dateStr);
     return scheduleDate <= today;
   };
 
@@ -7093,6 +7098,129 @@ function PricingSection() {
   );
 }
 
+// The four steps to mint a new Gmail App Password. Shown in the health
+// banner and in Settings so the fix is always one glance away.
+function AppPasswordSteps({ account, compact = false }) {
+  const steps = [
+    {
+      title: <>Sign in to Google as <strong>{account || 'your sending account'}</strong></>,
+      detail: <>then open <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: '#9C27B0', fontWeight: 600 }}>myaccount.google.com/apppasswords</a>. If Google asks, turn on 2-Step Verification first at <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" style={{ color: '#9C27B0' }}>myaccount.google.com/security</a>.</>
+    },
+    {
+      title: <>Create an app password named <strong>JUDY Invoices</strong></>,
+      detail: <>Google shows you 16 letters — copy them.</>
+    },
+    {
+      title: <>Paste it below in <strong>SMTP Password</strong> and click Save Settings</>,
+      detail: <>Spaces are fine — JUDY removes them for you.</>
+    },
+    {
+      title: <>Click <strong>Verify Connection</strong></>,
+      detail: <>When it turns green, you're back in business. Failed scheduled invoices go out on the next daily run.</>
+    }
+  ];
+
+  return (
+    <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+      {steps.map((step, i) => (
+        <li key={i} style={{ display: 'flex', gap: '0.75rem', marginBottom: i < steps.length - 1 ? (compact ? '0.5rem' : '0.875rem') : 0 }}>
+          <span style={{
+            flexShrink: 0, width: '1.5rem', height: '1.5rem', borderRadius: '50%',
+            background: '#9C27B0', color: 'white', fontSize: '0.8rem', fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '0.1rem'
+          }}>{i + 1}</span>
+          <span style={{ fontSize: '0.9rem', lineHeight: 1.55 }}>
+            {step.title}
+            {!compact && <><br /><span style={{ color: '#64748b', fontSize: '0.85rem' }}>{step.detail}</span></>}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// App-wide banner shown whenever Gmail has rejected the stored credentials.
+// Invoice email is the product — if it's broken, it should be impossible to miss.
+function EmailHealthBanner({ activeTab, onNavigate }) {
+  const [config, setConfig] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getEmailConfig()
+      .then(data => { if (!cancelled) setConfig(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
+  if (!config || !config.smtp_auth_failed_at) return null;
+
+  const handleVerify = async () => {
+    setVerifying(true);
+    try {
+      const result = await api.verifyEmailConfig();
+      if (result.configured) {
+        setConfig({ ...config, smtp_auth_failed_at: null });
+        addToast('Email is working again — you\'re all set!', 'success');
+      } else {
+        addToast(result.message, 'error');
+      }
+    } catch (error) {
+      addToast(error.message, 'error');
+    }
+    setVerifying(false);
+  };
+
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #fecaca', borderLeft: '4px solid #dc2626',
+      borderRadius: '12px', padding: '1.25rem 1.5rem', marginBottom: '1.5rem',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" style={{ flexShrink: 0, marginTop: '0.1rem' }}>
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '1rem', color: '#991b1b' }}>
+            Invoice emails are paused — Gmail needs a new App Password
+          </div>
+          <div style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+            Gmail is refusing to let JUDY sign in as <strong>{config.smtp_user}</strong>. This usually happens
+            after that account's Google password changes. The fix takes two minutes:
+          </div>
+        </div>
+      </div>
+
+      <div style={{ margin: '0.75rem 0 1rem 2.1rem' }}>
+        <AppPasswordSteps account={config.smtp_user} compact />
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginLeft: '2.1rem' }}>
+        <a
+          href="https://myaccount.google.com/apppasswords"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-primary"
+          style={{ textDecoration: 'none' }}
+        >
+          Open Google App Passwords
+        </a>
+        {activeTab !== 'settings' && (
+          <button className="btn btn-secondary" onClick={() => onNavigate('settings')}>
+            Go to Settings
+          </button>
+        )}
+        <button className="btn btn-secondary" onClick={handleVerify} disabled={verifying}>
+          {verifying ? 'Checking…' : "I've updated it — Verify"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsSection() {
   const [config, setConfig] = useState({
     smtp_host: '',
@@ -7102,7 +7230,9 @@ function SettingsSection() {
     from_email: '',
     from_name: 'JUDY Legal Research',
     accountant_email: '',
-    auto_send_receipt: true
+    auto_send_receipt: true,
+    backup_smtp_user: '',
+    backup_smtp_pass: ''
   });
   const [loading, setLoading] = useState(false);
   const [schedulerRunning, setSchedulerRunning] = useState(false);
@@ -7215,6 +7345,15 @@ function SettingsSection() {
               onChange={e => setConfig({ ...config, smtp_pass: e.target.value })}
               placeholder="Enter password"
             />
+            {/gmail|googlemail/i.test(config.smtp_host || '') && (
+              <small style={{ marginTop: '0.25rem', display: 'block', color: '#94a3b8' }}>
+                Gmail requires an{' '}
+                <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">
+                  App Password
+                </a>{' '}
+                (Google Account → Security → 2-Step Verification → App passwords). Your regular Gmail password won't work.
+              </small>
+            )}
           </div>
           <div className="form-group">
             <label>From Email</label>
@@ -7235,12 +7374,70 @@ function SettingsSection() {
           </div>
         </div>
 
+        <details style={{ marginTop: '1rem', background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: '10px', padding: '0.875rem 1rem' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#7e22ce', fontSize: '0.9rem' }}>
+            How to create a Gmail App Password (2 minutes)
+          </summary>
+          <div style={{ marginTop: '1rem' }}>
+            <AppPasswordSteps account={config.smtp_user || 'your sending account'} />
+            <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.875rem', marginBottom: 0 }}>
+              Good to know: whenever that account's Google password changes, Google revokes its app
+              passwords and sending stops — just repeat these steps with a fresh one.
+            </p>
+          </div>
+        </details>
+
         <div style={{ marginTop: '1rem' }}>
           <button className="btn btn-primary" onClick={handleSave} disabled={loading} style={{ marginRight: '0.5rem' }}>
             Save Settings
           </button>
           <button className="btn btn-secondary" onClick={handleVerify} disabled={loading}>
             Verify Connection
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">If Email Ever Breaks</h2>
+        </div>
+        <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.875rem' }}>
+          If Gmail rejects the main sender's password (e.g. its app password gets revoked), JUDY
+          emails <strong>sokocha@gmail.com</strong> and <strong>sadiq@judy.legal</strong> step-by-step
+          instructions to fix it. A broken sender can't send its own alert — so give JUDY a backup:
+          a <em>different</em> Google account (e.g. hello@judy.legal) with its own app password, used
+          only for these alerts.
+        </p>
+        <div className="form-grid">
+          <div className="form-group">
+            <label>Backup Gmail Address</label>
+            <input
+              type="text"
+              value={config.backup_smtp_user || ''}
+              onChange={e => setConfig({ ...config, backup_smtp_user: e.target.value })}
+              placeholder="e.g., hello@judy.legal"
+            />
+          </div>
+          <div className="form-group">
+            <label>Backup App Password</label>
+            <input
+              type="password"
+              value={config.backup_smtp_pass || ''}
+              onChange={e => setConfig({ ...config, backup_smtp_pass: e.target.value })}
+              placeholder="16-letter app password for the backup account"
+            />
+            <small style={{ marginTop: '0.25rem', display: 'block', color: '#94a3b8' }}>
+              Create one at{' '}
+              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">
+                myaccount.google.com/apppasswords
+              </a>{' '}
+              while signed in as the backup account.
+            </small>
+          </div>
+        </div>
+        <div style={{ marginTop: '0.5rem' }}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
+            Save Settings
           </button>
         </div>
       </div>
@@ -7365,15 +7562,8 @@ function AppContent() {
         setActiveTab('generate');
         addToast('Navigated to Generate Invoice', 'info', 2000);
       }
-      // Ctrl+F or Cmd+F: Go to Firms tab
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !e.shiftKey) {
-        // Only intercept if not in an input/textarea
-        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-          e.preventDefault();
-          setActiveTab('firms');
-          addToast('Navigated to Law Firms', 'info', 2000);
-        }
-      }
+      // Ctrl+F/Cmd+F is deliberately NOT intercepted — it stays the
+      // browser's find-in-page so users can search within each tab.
       // Ctrl+H or Cmd+H: Go to History tab
       if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
         e.preventDefault();
@@ -7454,7 +7644,7 @@ function AppContent() {
             <button
               className={`nav-btn ${activeTab === 'firms' ? 'active' : ''}`}
               onClick={() => setActiveTab('firms')}
-              title={`Law Firms (Ctrl+F)${expiringCount > 0 ? ` — ${expiringCount} subscription${expiringCount === 1 ? '' : 's'} expiring within 30 days` : ''}`}
+              title={`Law Firms${expiringCount > 0 ? ` — ${expiringCount} subscription${expiringCount === 1 ? '' : 's'} expiring within 30 days` : ''}`}
             >
               Law Firms
               {expiringCount > 0 && <span className="nav-badge nav-badge-warning">{expiringCount}</span>}
@@ -7496,6 +7686,7 @@ function AppContent() {
       </header>
 
       <main className="main">
+        <EmailHealthBanner activeTab={activeTab} onNavigate={setActiveTab} />
         {loading ? (
           <div className="loading">
             <div className="spinner"></div>

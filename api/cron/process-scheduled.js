@@ -1,6 +1,6 @@
 import * as db from '../lib/db.js';
 import { generateInvoicePDF } from '../lib/invoice.js';
-import { sendInvoiceEmail } from '../lib/email.js';
+import { sendInvoiceEmail, maybeSendAuthAlert } from '../lib/email.js';
 
 export default async function handler(req, res) {
   // Verify this is a cron job request from Vercel
@@ -68,10 +68,17 @@ async function processScheduledInvoices() {
       console.error(`Error processing scheduled invoice ${scheduled.id}:`, error);
       results.errors.push({
         id: scheduled.id,
-        error: error.message
+        error: error.message,
+        authError: !!error.isSmtpAuthError
       });
       await db.updateScheduledInvoiceStatus(scheduled.id, 'failed');
     }
+  }
+
+  // If any send failed because Gmail rejected the credentials, alert the
+  // team (via the backup sender) with instructions to mint a new app password.
+  if (results.errors.some(e => e.authError)) {
+    results.authAlert = await maybeSendAuthAlert();
   }
 
   return results;

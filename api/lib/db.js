@@ -325,21 +325,33 @@ export async function getEmailConfig() {
     from_email: '',
     from_name: 'JUDY Legal Research',
     accountant_email: '',
-    auto_send_receipt: true
+    auto_send_receipt: true,
+    smtp_auth_failed_at: null,
+    last_auth_alert_at: null,
+    backup_smtp_user: '',
+    backup_smtp_pass: ''
   };
 }
 
-export async function updateEmailConfig(config) {
-  // Self-heal the column for databases that predate auto-send receipts.
+// Self-heal email_config columns for databases created before they existed.
+async function ensureEmailConfigColumns() {
   try {
     await sql`ALTER TABLE email_config ADD COLUMN IF NOT EXISTS auto_send_receipt BOOLEAN DEFAULT true`;
+    await sql`ALTER TABLE email_config ADD COLUMN IF NOT EXISTS smtp_auth_failed_at TIMESTAMP`;
+    await sql`ALTER TABLE email_config ADD COLUMN IF NOT EXISTS last_auth_alert_at TIMESTAMP`;
+    await sql`ALTER TABLE email_config ADD COLUMN IF NOT EXISTS backup_smtp_user VARCHAR(255)`;
+    await sql`ALTER TABLE email_config ADD COLUMN IF NOT EXISTS backup_smtp_pass VARCHAR(255)`;
   } catch (e) {
-    // Column already exists or DB doesn't support IF NOT EXISTS
+    // Columns already exist or DB doesn't support IF NOT EXISTS
   }
+}
+
+export async function updateEmailConfig(config) {
+  await ensureEmailConfigColumns();
   const autoSend = config.auto_send_receipt !== false;
   await sql`
-    INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, from_name, accountant_email, auto_send_receipt)
-    VALUES (1, ${config.smtp_host}, ${config.smtp_port}, ${config.smtp_user}, ${config.smtp_pass}, ${config.from_email}, ${config.from_name}, ${config.accountant_email || null}, ${autoSend})
+    INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, from_name, accountant_email, auto_send_receipt, backup_smtp_user, backup_smtp_pass)
+    VALUES (1, ${config.smtp_host}, ${config.smtp_port}, ${config.smtp_user}, ${config.smtp_pass}, ${config.from_email}, ${config.from_name}, ${config.accountant_email || null}, ${autoSend}, ${config.backup_smtp_user || null}, ${config.backup_smtp_pass || null})
     ON CONFLICT (id) DO UPDATE SET
       smtp_host = ${config.smtp_host},
       smtp_port = ${config.smtp_port},
@@ -348,8 +360,27 @@ export async function updateEmailConfig(config) {
       from_email = ${config.from_email},
       from_name = ${config.from_name},
       accountant_email = ${config.accountant_email || null},
-      auto_send_receipt = ${autoSend}
+      auto_send_receipt = ${autoSend},
+      backup_smtp_user = ${config.backup_smtp_user || null},
+      backup_smtp_pass = ${config.backup_smtp_pass || null}
   `;
+}
+
+// Track SMTP authentication health so the UI can show a fix-it banner and
+// the scheduler can alert (at most once a day) when the app password dies.
+export async function markSmtpAuthFailure() {
+  await ensureEmailConfigColumns();
+  await sql`UPDATE email_config SET smtp_auth_failed_at = NOW() WHERE id = 1 AND smtp_auth_failed_at IS NULL`;
+}
+
+export async function clearSmtpAuthFailure() {
+  await ensureEmailConfigColumns();
+  await sql`UPDATE email_config SET smtp_auth_failed_at = NULL, last_auth_alert_at = NULL WHERE id = 1`;
+}
+
+export async function markAuthAlertSent() {
+  await ensureEmailConfigColumns();
+  await sql`UPDATE email_config SET last_auth_alert_at = NOW() WHERE id = 1`;
 }
 
 // Record that a payment receipt was emailed for an invoice (used to avoid
