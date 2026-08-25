@@ -6044,7 +6044,7 @@ function InvoiceHistorySection({ invoices, onRefresh, showFilters = true, onNavi
                               )}
                             </button>
                           </Tooltip>
-                          {inv.status === 'sent' && (
+                          {(inv.status === 'sent' || inv.status === 'draft') && (
                             <Tooltip text="Mark as paid">
                               <button
                                 className="action-btn action-btn-paid"
