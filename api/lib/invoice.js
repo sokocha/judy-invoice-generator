@@ -87,10 +87,49 @@ export const parseDurationMonths = (duration) => {
   return Number.isFinite(n) && n > 0 ? n : 1;
 };
 
+// Hard cap on the price per user per month, by home country. base_amount is
+// stored and billed as the per-user-per-month rate, so this is an absolute
+// ceiling on it: every invoice path (manual generate, generate-and-send, the
+// scheduled/cron sender, draft edits, and previews) runs through
+// calculateAmounts and refuses to produce an invoice above this. It guards
+// against a mis-entered base price (e.g. a whole-plan or annual figure stored
+// as a monthly rate) being multiplied by users and months into an exorbitant
+// total. Ghana's 400 matches the Plus list price; Nigeria's 35,000 is the
+// equivalent Plus list price. Raise a value here if genuine pricing (e.g. a
+// heavily add-on-loaded plan) ever needs to exceed it.
+export const MAX_PRICE_PER_USER_PER_MONTH = {
+  ghana: 400,
+  nigeria: 35000
+};
+
+export const priceCapFor = (country) => {
+  const c = (country || 'ghana').toLowerCase();
+  return MAX_PRICE_PER_USER_PER_MONTH[c] ?? MAX_PRICE_PER_USER_PER_MONTH.ghana;
+};
+
+// Throw if the per-user-per-month base price exceeds the country's cap.
+export const assertPriceWithinCap = (baseAmount, country = 'ghana') => {
+  const perUser = Number(baseAmount) || 0;
+  const cap = priceCapFor(country);
+  if (perUser > cap) {
+    const currency = (country || 'ghana').toLowerCase() === 'nigeria' ? 'NGN' : 'GHS';
+    const err = new Error(
+      `Price per user per month (${currency} ${formatAmount(perUser)}) exceeds the maximum allowed ` +
+      `${currency} ${formatAmount(cap)}. Check the firm's base price — it should be the per-user ` +
+      `monthly rate, not a whole-plan, per-term, or annual figure.`
+    );
+    err.isPriceCapError = true;
+    err.code = 'PRICE_CAP_EXCEEDED';
+    throw err;
+  }
+};
+
 // Calculate invoice amounts. baseAmount is the per-user-per-month price;
 // subtotal = baseAmount * numUsers * months.
 // Ghana applies GTFL+NIHL+VAT15; Nigeria applies VAT7.5 only.
+// Enforces the per-user-per-month price cap before computing anything.
 export const calculateAmounts = (baseAmount, numUsers = 1, duration = '1 month', country = 'ghana') => {
+  assertPriceWithinCap(baseAmount, country);
   const perUser = Number(baseAmount) || 0;
   const users = Math.max(1, parseInt(numUsers) || 1);
   const months = parseDurationMonths(duration);
