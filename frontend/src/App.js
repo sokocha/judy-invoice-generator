@@ -2339,7 +2339,7 @@ const parseAddons = (raw) => {
 };
 
 const CITIES_BY_COUNTRY = {
-  ghana: ['Accra', 'Kumasi', 'Tamale', 'Sekondi-Takoradi', 'Tema', 'Cape Coast', 'Sunyani', 'Koforidua', 'Ho', 'Techiman'],
+  ghana: ['Accra', 'Kumasi', 'Tamale', 'Sekondi-Takoradi', 'Tema', 'Cape Coast', 'Sunyani', 'Koforidua', 'Ho', 'Techiman', 'Bolgatanga', 'Wa', 'Goaso', 'Damongo', 'Nalerigu', 'Dambai', 'Sefwi Wiawso'],
   nigeria: ['Lagos', 'Abuja', 'Kano', 'Ibadan', 'Port Harcourt', 'Benin City', 'Kaduna', 'Enugu', 'Abeokuta', 'Onitsha', 'Owerri', 'Warri', 'Ilorin', 'Jos', 'Calabar', 'Uyo']
 };
 
