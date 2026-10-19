@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from 'react';
 
 // API base URL - empty for same-origin requests on Vercel
 const API_BASE = '';
@@ -2901,6 +2901,114 @@ function Alert({ type, message, onClose }) {
   );
 }
 
+// Email typo detection. Domains we trust as correctly spelled; anything a
+// couple of keystrokes away from one of these gets a "Did you mean" hint.
+const TRUSTED_EMAIL_DOMAINS = [
+  'judy.legal', 'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk',
+  'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'aol.com'
+];
+
+const splitEmails = (raw) =>
+  String(raw || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+
+// Optimal string alignment distance: Levenshtein plus adjacent transpositions,
+// so "judyl.egal" is one edit from "judy.legal".
+const editDistance = (a, b) => {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[a.length][b.length];
+};
+
+// Collects every address used across firms and invoices, most-used first.
+// Primary firm emails also make their domain trusted.
+const buildEmailDirectory = (firms = [], invoices = []) => {
+  const counts = new Map();
+  const add = (e) => counts.set(e, (counts.get(e) || 0) + 1);
+  const domains = new Set(TRUSTED_EMAIL_DOMAINS);
+  firms.forEach(f => {
+    splitEmails(f.email).forEach(e => { add(e); domains.add(e.split('@')[1]); });
+    splitEmails(f.cc_emails).forEach(add);
+    splitEmails(f.bcc_emails).forEach(add);
+  });
+  invoices.forEach(inv => splitEmails(inv.additional_emails).forEach(add));
+  add('hello@judy.legal');
+  const emails = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
+  return { emails, counts, domains: [...domains].filter(Boolean) };
+};
+
+// Returns a corrected address if `email` looks like a typo, otherwise null.
+const suggestEmailFix = (email, directory = buildEmailDirectory()) => {
+  const typed = String(email || '').trim().toLowerCase();
+  const at = typed.lastIndexOf('@');
+  if (at < 1 || at === typed.length - 1) return null;
+  const local = typed.slice(0, at);
+  const domain = typed.slice(at + 1);
+  const { emails, counts, domains } = directory;
+
+  // A near-identical address we've used more often than this one.
+  const typedCount = counts.get(typed) || 0;
+  const maxAddrDist = typed.length >= 12 ? 2 : 1;
+  let best = null;
+  for (const known of emails) {
+    if (known === typed || (counts.get(known) || 0) <= typedCount) continue;
+    const dist = editDistance(typed, known);
+    if (dist <= maxAddrDist && (!best || dist < best.dist)) best = { email: known, dist };
+  }
+  if (best) return best.email;
+
+  // A misspelt domain: compare as typed and with dots ignored.
+  if (domains.includes(domain)) return null;
+  const maxDomainDist = domain.length >= 8 ? 2 : 1;
+  let bestDomain = null;
+  for (const known of domains) {
+    const dist = Math.min(
+      editDistance(domain, known),
+      editDistance(domain.replace(/\./g, ''), known.replace(/\./g, ''))
+    );
+    if (dist <= maxDomainDist && (!bestDomain || dist < bestDomain.dist)) bestDomain = { domain: known, dist };
+  }
+  return bestDomain ? `${local}@${bestDomain.domain}` : null;
+};
+
+// "Did you mean …?" hints for a single address or a comma-separated list.
+// onApply receives the full value with the suggested fix substituted.
+function EmailTypoHint({ value, directory, onApply }) {
+  const parts = String(value || '').split(',');
+  const fixes = parts
+    .map((p, i) => ({ i, typed: p.trim(), fix: suggestEmailFix(p, directory) }))
+    .filter(x => x.fix);
+  if (fixes.length === 0) return null;
+  return (
+    <div style={{ marginTop: '0.375rem' }}>
+      {fixes.map(({ i, typed, fix }) => (
+        <div key={i} style={{ color: '#b45309', fontSize: '0.8rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.375rem', marginTop: '0.125rem' }}>
+          <span>Did you mean <strong>{fix}</strong>{fixes.length > 1 || parts.length > 1 ? ` (not ${typed})` : ''}?</span>
+          <button
+            type="button"
+            onClick={() => {
+              const next = parts.slice();
+              next[i] = next[i].replace(next[i].trim(), fix);
+              onApply(next.join(','));
+            }}
+            style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: '4px', padding: '0.0625rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer' }}
+          >
+            Use this
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Law Firms Management
 function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [], invoices = [], onGenerateForFirm }) {
   const [showModal, setShowModal] = useState(false);
@@ -2932,6 +3040,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [], invo
   const [detailFirm, setDetailFirm] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [showAdvancedEmail, setShowAdvancedEmail] = useState(false);
+  const emailDirectory = useMemo(() => buildEmailDirectory(firms, invoices), [firms, invoices]);
   const [errors, setErrors] = useState({});
   const [customCity, setCustomCity] = useState(false);
   const [customDuration, setCustomDuration] = useState(false);
@@ -3399,6 +3508,11 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [], invo
                 placeholder="e.g., billing@ensafrica.com"
               />
               {errors.email && <div className="form-error">{errors.email}</div>}
+              <EmailTypoHint
+                value={formData.email}
+                directory={emailDirectory}
+                onApply={v => { setFormData({ ...formData, email: v }); validateField('email', v); }}
+              />
             </div>
             <div className={`form-group ${errors.street_address ? 'has-error' : formData.street_address ? 'has-success' : ''}`}>
               <label>Street Address *</label>
@@ -3665,6 +3779,11 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [], invo
                 <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
                   Additional email addresses to CC on invoices (comma-separated)
                 </small>
+                <EmailTypoHint
+                  value={formData.cc_emails}
+                  directory={emailDirectory}
+                  onApply={v => setFormData({ ...formData, cc_emails: v })}
+                />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label>BCC Emails <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>(optional)</span></label>
@@ -3677,6 +3796,11 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [], invo
                 <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
                   Additional email addresses to BCC on invoices (comma-separated)
                 </small>
+                <EmailTypoHint
+                  value={formData.bcc_emails}
+                  directory={emailDirectory}
+                  onApply={v => setFormData({ ...formData, bcc_emails: v })}
+                />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -3751,7 +3875,7 @@ function FirmsSection({ firms, onRefresh, isLoading, highlightFirmIds = [], invo
 }
 
 // Generate Invoice Section
-function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInitialFirmConsumed }) {
+function GenerateInvoiceSection({ firms, invoices = [], onRefresh, initialFirmId = null, onInitialFirmConsumed }) {
   const [formData, setFormData] = useState({
     firmId: '',
     planType: 'standard',
@@ -3771,6 +3895,7 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
   const [additionalEmails, setAdditionalEmails] = useState([]);
   const [newEmail, setNewEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+  const emailDirectory = useMemo(() => buildEmailDirectory(firms, invoices), [firms, invoices]);
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [sendEmailSubject, setSendEmailSubject] = useState('');
   const [sendEmailBody, setSendEmailBody] = useState('');
@@ -3883,7 +4008,8 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
     return re.test(email);
   };
 
-  const handleAddEmail = () => {
+  // keepAsTyped skips the typo check once the user has confirmed the address.
+  const handleAddEmail = (keepAsTyped = false) => {
     const email = newEmail.trim().toLowerCase();
     if (!email) return;
 
@@ -3899,6 +4025,12 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
 
     if (additionalEmails.includes(email)) {
       setEmailError('This email is already added');
+      return;
+    }
+
+    // Make the user pick the suggestion or explicitly keep what they typed.
+    if (keepAsTyped !== true && suggestEmailFix(email, emailDirectory)) {
+      setEmailError('typo');
       return;
     }
 
@@ -4285,12 +4417,30 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
               <input
                 type="email"
                 placeholder="Add CC recipient email..."
+                list="known-email-addresses"
                 value={newEmail}
                 onChange={e => { setNewEmail(e.target.value); setEmailError(''); }}
                 onKeyDown={handleEmailKeyDown}
-                style={{ width: '100%', padding: '0.5rem 0.75rem', border: emailError ? '1px solid #ef4444' : '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.875rem' }}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: emailError && emailError !== 'typo' ? '1px solid #ef4444' : emailError === 'typo' ? '1px solid #f59e0b' : '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.875rem' }}
               />
-              {emailError && <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.25rem', marginBottom: 0 }}>{emailError}</p>}
+              <datalist id="known-email-addresses">
+                {emailDirectory.emails.map(e => <option key={e} value={e} />)}
+              </datalist>
+              {emailError && emailError !== 'typo' && <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.25rem', marginBottom: 0 }}>{emailError}</p>}
+              <EmailTypoHint
+                value={newEmail}
+                directory={emailDirectory}
+                onApply={v => { setNewEmail(v); setEmailError(''); }}
+              />
+              {emailError === 'typo' && (
+                <button
+                  type="button"
+                  onClick={() => handleAddEmail(true)}
+                  style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.75rem', textDecoration: 'underline', cursor: 'pointer', padding: 0, marginTop: '0.25rem' }}
+                >
+                  No, add {newEmail.trim().toLowerCase()} as typed
+                </button>
+              )}
             </div>
             <button
               type="button"
@@ -7457,6 +7607,10 @@ function SettingsSection() {
             onChange={e => setConfig({ ...config, accountant_email: e.target.value })}
             placeholder="e.g., accountant@company.com"
           />
+          <EmailTypoHint
+            value={config.accountant_email}
+            onApply={v => setConfig({ ...config, accountant_email: v })}
+          />
         </div>
         <div className="form-group" style={{ maxWidth: '520px' }}>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer' }}>
@@ -7709,6 +7863,7 @@ function AppContent() {
               <>
                 <GenerateInvoiceSection
                   firms={firms}
+                  invoices={invoices}
                   onRefresh={loadData}
                   initialFirmId={pendingGenerateFirmId}
                   onInitialFirmConsumed={() => setPendingGenerateFirmId(null)}
