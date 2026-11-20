@@ -111,10 +111,11 @@ async function processSingleScheduledInvoice(id) {
 async function processScheduledInvoices() {
   const db = await import('./lib/db.js');
   const { generateInvoicePDF } = await import('./lib/invoice.js');
-  const { sendInvoiceEmail, maybeSendAuthAlert } = await import('./lib/email.js');
+  const { sendInvoiceEmail, maybeSendAuthAlert, sendPriceCapAlert } = await import('./lib/email.js');
 
   const pending = await db.getPendingScheduledInvoices();
   const results = { processed: 0, errors: [] };
+  const blockedByCap = [];
 
   for (const scheduled of pending) {
     try {
@@ -144,7 +145,10 @@ async function processScheduledInvoices() {
       results.processed++;
     } catch (error) {
       console.error(`Error processing scheduled invoice ${scheduled.id}:`, error);
-      results.errors.push({ id: scheduled.id, error: error.message, authError: !!error.isSmtpAuthError });
+      results.errors.push({ id: scheduled.id, error: error.message, authError: !!error.isSmtpAuthError, priceCapError: !!error.isPriceCapError });
+      if (error.isPriceCapError) {
+        blockedByCap.push({ firm: scheduled.firm_name, scheduleDate: scheduled.schedule_date, message: error.message });
+      }
       await db.updateScheduledInvoiceStatus(scheduled.id, 'failed');
     }
   }
@@ -153,6 +157,13 @@ async function processScheduledInvoices() {
   // team (via the backup sender) with instructions to mint a new app password.
   if (results.errors.some(e => e.authError)) {
     results.authAlert = await maybeSendAuthAlert();
+  }
+
+  // If any invoice was blocked by the price cap, alert the team and include
+  // the blocked list in the response so the UI can surface it.
+  if (blockedByCap.length > 0) {
+    results.blockedByCap = blockedByCap;
+    results.priceCapAlert = await sendPriceCapAlert(blockedByCap);
   }
 
   return results;

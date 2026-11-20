@@ -2358,6 +2358,15 @@ const PLAN_LIST_PRICES = {
   nigeria: { standard: 7000, plus: 35000 }
 };
 const ADDON_LIST_PRICES = { ghana: 20, nigeria: 1500 };
+
+// Hard cap on the price per user per month, mirroring the server
+// (api/lib/invoice.js MAX_PRICE_PER_USER_PER_MONTH). No invoice may bill above
+// this per-user monthly rate; keep both copies in sync.
+const MAX_PRICE_PER_USER_PER_MONTH = { ghana: 400, nigeria: 35000 };
+const priceCapFor = (homeCountry) =>
+  MAX_PRICE_PER_USER_PER_MONTH[homeCountry] ?? MAX_PRICE_PER_USER_PER_MONTH.ghana;
+const overPriceCap = (baseAmount, homeCountry) =>
+  (Number(baseAmount) || 0) > priceCapFor(homeCountry);
 const PRICED_ADDONS = [
   'The Federal Republic of Nigeria',
   'The Republic of Ghana',
@@ -3944,6 +3953,10 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
   }, [formData.firmId, firms]);
 
   const confirmAndDownload = async (format) => {
+    if (overPriceCap(formData.baseAmount, formData.homeCountry)) {
+      addToast(`Price per user per month exceeds the ${priceCurrency} ${priceCapFor(formData.homeCountry).toLocaleString('en-US')} cap. Check the firm's base price.`, 'error');
+      return;
+    }
     if (anomalies.length > 0) {
       const ok = await confirm({
         title: 'Check before generating',
@@ -3987,6 +4000,10 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
   const handleSend = () => {
     if (!formData.firmId) {
       addToast('Please select a law firm', 'error');
+      return;
+    }
+    if (overPriceCap(formData.baseAmount, formData.homeCountry)) {
+      addToast(`Price per user per month exceeds the ${priceCurrency} ${priceCapFor(formData.homeCountry).toLocaleString('en-US')} cap. Check the firm's base price.`, 'error');
       return;
     }
     // Open the send dialog
@@ -4165,6 +4182,11 @@ function GenerateInvoiceSection({ firms, onRefresh, initialFirmId = null, onInit
             </small>
           )}
           {profileHint(Number(formData.baseAmount) === Number(selectedFirm.base_price || 0), `${priceCurrency} ${Number(selectedFirm.base_price || 0).toFixed(2)}`)}
+          {overPriceCap(formData.baseAmount, formData.homeCountry) && (
+            <small style={{ color: '#dc2626', fontWeight: 600, marginTop: '0.25rem', display: 'block' }}>
+              Exceeds the {priceCurrency} {priceCapFor(formData.homeCountry).toLocaleString('en-US')}/user/month cap. This invoice cannot be generated or sent until the price is corrected.
+            </small>
+          )}
         </div>
         <div className="form-group">
           <label>Due Date</label>
@@ -4603,6 +4625,13 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
       addToast('Please fill in all required fields', 'error');
       return;
     }
+    const scheduledFirm = firms.find(f => f.id === parseInt(formData.firm_id));
+    const scheduledCountry = scheduledFirm ? (scheduledFirm.home_country || 'ghana') : 'ghana';
+    if (overPriceCap(formData.base_amount, scheduledCountry)) {
+      const cur = scheduledCountry === 'nigeria' ? 'NGN' : 'GHS';
+      addToast(`Base price per user per month exceeds the ${cur} ${priceCapFor(scheduledCountry).toLocaleString('en-US')} cap. Fix the firm's base price before scheduling.`, 'error');
+      return;
+    }
     setFormLoading(true);
     try {
       await api.createScheduled(formData);
@@ -4771,6 +4800,7 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
     setBulkLoading(true);
     let successCount = 0;
     let errorCount = 0;
+    const overCapFirms = [];
 
     for (const firmId of bulkFormData.selectedFirms) {
       const firm = firmsWithSubscriptionEnd.find(f => f.id === firmId);
@@ -4778,6 +4808,12 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
 
       const scheduleDate = calculateScheduleDate(firm.subscription_end);
       if (!scheduleDate) continue;
+
+      if (overPriceCap(firm.base_price || 0, firm.home_country || 'ghana')) {
+        overCapFirms.push(firm.firm_name);
+        errorCount++;
+        continue;
+      }
 
       try {
         await api.createScheduled({
@@ -4800,6 +4836,8 @@ function ScheduledSection({ firms, scheduled, onRefresh }) {
 
     if (errorCount === 0) {
       addToast(`Successfully scheduled ${successCount} invoice(s)`, 'success');
+    } else if (overCapFirms.length > 0) {
+      addToast(`Scheduled ${successCount} invoice(s). Skipped ${overCapFirms.length} over the price cap: ${overCapFirms.join(', ')}. Fix their base price first.`, 'warning');
     } else {
       addToast(`Scheduled ${successCount} invoice(s), ${errorCount} failed`, 'warning');
     }
