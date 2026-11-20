@@ -1,6 +1,6 @@
 import * as db from '../lib/db.js';
 import { generateInvoicePDF } from '../lib/invoice.js';
-import { sendInvoiceEmail, maybeSendAuthAlert } from '../lib/email.js';
+import { sendInvoiceEmail, maybeSendAuthAlert, sendPriceCapAlert } from '../lib/email.js';
 
 export default async function handler(req, res) {
   // Verify this is a cron job request from Vercel
@@ -32,6 +32,7 @@ export default async function handler(req, res) {
 async function processScheduledInvoices() {
   const pending = await db.getPendingScheduledInvoices();
   const results = { processed: 0, errors: [] };
+  const blockedByCap = [];
 
   for (const scheduled of pending) {
     try {
@@ -69,8 +70,16 @@ async function processScheduledInvoices() {
       results.errors.push({
         id: scheduled.id,
         error: error.message,
-        authError: !!error.isSmtpAuthError
+        authError: !!error.isSmtpAuthError,
+        priceCapError: !!error.isPriceCapError
       });
+      if (error.isPriceCapError) {
+        blockedByCap.push({
+          firm: scheduled.firm_name,
+          scheduleDate: scheduled.schedule_date,
+          message: error.message
+        });
+      }
       await db.updateScheduledInvoiceStatus(scheduled.id, 'failed');
     }
   }
@@ -79,6 +88,13 @@ async function processScheduledInvoices() {
   // team (via the backup sender) with instructions to mint a new app password.
   if (results.errors.some(e => e.authError)) {
     results.authAlert = await maybeSendAuthAlert();
+  }
+
+  // If any invoice was blocked by the price cap, alert the team so a silent
+  // "failed" status isn't the only signal that something didn't send.
+  if (blockedByCap.length > 0) {
+    results.blockedByCap = blockedByCap;
+    results.priceCapAlert = await sendPriceCapAlert(blockedByCap);
   }
 
   return results;

@@ -495,6 +495,81 @@ export const maybeSendAuthAlert = async () => {
   }
 };
 
+// Alert the team when one or more invoices were blocked by the price cap and
+// NOT sent. Called from the scheduled/cron sender so a silent "failed" status
+// isn't the only signal. Each item: { firm, scheduleDate, message }.
+export const sendPriceCapAlert = async (items) => {
+  if (!items || items.length === 0) {
+    return { sent: false, reason: 'No blocked invoices to report' };
+  }
+
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const config = await db.getEmailConfig();
+  const hasBackup = config.backup_smtp_user && config.backup_smtp_pass;
+  const transporter = buildTransporter(hasBackup
+    ? {
+        smtp_host: 'smtp.gmail.com',
+        smtp_port: 587,
+        smtp_user: config.backup_smtp_user,
+        smtp_pass: config.backup_smtp_pass
+      }
+    : config);
+  const fromAddress = hasBackup ? config.backup_smtp_user : config.from_email;
+
+  const rows = items.map((it) => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #edf2f7;font-size:14px;font-weight:600;">${esc(it.firm)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #edf2f7;font-size:14px;color:#4a5568;">${esc(it.scheduleDate)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #edf2f7;font-size:13px;color:#4a5568;">${esc(it.message)}</td>
+    </tr>`).join('');
+
+  const emailHtml = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1a202c;">
+      <div style="padding: 32px 0 8px;">
+        <h1 style="font-size: 24px; font-weight: 700; margin: 0 0 8px;">${items.length} invoice${items.length === 1 ? ' was' : 's were'} blocked and not sent</h1>
+        <p style="font-size: 15px; line-height: 1.6; color: #4a5568; margin: 0;">
+          JUDY's price cap stopped ${items.length === 1 ? 'this invoice' : 'these invoices'} because the price per user per month
+          was above the maximum allowed. This usually means a firm's base price was entered as a whole-plan or annual figure
+          instead of a monthly rate. Nothing was emailed to the client. Fix the firm's base price, then re-run or reschedule.
+        </p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;border:1px solid #edf2f7;border-radius:8px;overflow:hidden;">
+        <thead>
+          <tr style="background:#faf5fb;">
+            <th style="text-align:left;padding:10px 12px;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;color:#9C27B0;">Firm</th>
+            <th style="text-align:left;padding:10px 12px;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;color:#9C27B0;">Scheduled</th>
+            <th style="text-align:left;padding:10px 12px;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;color:#9C27B0;">Reason</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${APP_URL}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%); color: white; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 15px;">Open JUDY</a>
+      </div>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0;" />
+      <p style="color: #718096; font-size: 12px; line-height: 1.6;">
+        You're receiving this because scheduled invoices were blocked by the price cap during the daily run.<br/>
+        JUDY INNOVATIVE TECH LTD &middot; 19 Banana Street, East Legon, Accra, Ghana
+      </p>
+    </div>`;
+
+  try {
+    await transporter.sendMail({
+      from: `"JUDY Invoice Generator" <${fromAddress}>`,
+      to: AUTH_ALERT_RECIPIENTS.join(', '),
+      subject: `JUDY: ${items.length} invoice${items.length === 1 ? '' : 's'} blocked by the price cap — not sent`,
+      html: emailHtml
+    });
+    return { sent: true, via: hasBackup ? 'backup sender' : 'primary sender', to: AUTH_ALERT_RECIPIENTS, count: items.length };
+  } catch (error) {
+    console.error('Could not deliver price-cap alert email:', error.message);
+    return { sent: false, reason: `Alert delivery failed: ${error.message}` };
+  }
+};
+
 // Send password reset email
 export const sendPasswordResetEmail = async (email, resetToken, appUrl) => {
   const config = await db.getEmailConfig();
